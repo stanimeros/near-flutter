@@ -28,7 +28,7 @@ Near is a social networking application refactored to a Flutter version. Origina
     cd near
 3. Install dependencies:
     ```sh
-    cd near
+    flutter pub get
 4. Run the application:
     ```sh
     flutter run
