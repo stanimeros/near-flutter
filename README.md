@@ -11,7 +11,7 @@ Near is a social networking application refactored to a Flutter version. Origina
 - **KNN Point Selection:** Picks a K-nearest neighbors (KNN) point near you to share as your location.
 - **Privacy Settings:** Configure k-anonymity settings in your profile for enhanced privacy.
 
-## Installation
+## Installation and Usage
 
 ### Prerequisites
 
