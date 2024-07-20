@@ -22,7 +22,7 @@ Near is a social networking application refactored to a Flutter version. Origina
 
 1. Clone the repository:
    ```sh
-   git clone https://github.com/your-username/near.git
+   git clone https://github.com/stanimeros/near-flutter.git
 2. Navigate to the project directory:
     ```sh
     cd near
