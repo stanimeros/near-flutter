@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "567143444276",
+    "project_id": "near-98344",
+    "storage_bucket": "near-98344.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:567143444276:android:ad8e83eaf5bc6d0e793f61",
+        "android_client_info": {
+          "package_name": "com.stanimeros.near"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBCNK_WVHRVu4IpIpLbRZqJd8ghzTn5egc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
