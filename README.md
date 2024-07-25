@@ -36,12 +36,16 @@ Near is a social networking application refactored to a Flutter version. Origina
     ```sh
     flutter run
 <br>
-<img src="https://github.com/user-attachments/assets/2b8c550a-be09-4a96-91c1-52b4168d9b97" width="32%"></img> 
-<img src="https://github.com/user-attachments/assets/35755895-ab03-45f2-a54a-59b9c7c16008" width="32%"></img> 
-<img src="https://github.com/user-attachments/assets/c87320c2-f9bc-487e-9d4d-754f9660cb14" width="32%"></img> 
-<img src="https://github.com/user-attachments/assets/21ba1ad7-be7f-4e86-91fd-e922298d0ff5" width="32%"></img> 
-<img src="https://github.com/user-attachments/assets/f54bcb68-0b9c-48a3-9335-2c693042c99b" width="32%"></img> 
-<img src="https://github.com/user-attachments/assets/ab625602-693a-4b09-8edf-33a55b09e8ba" width="32%"></img> 
+
+<p align="center">
+<img src="https://github.com/user-attachments/assets/2b8c550a-be09-4a96-91c1-52b4168d9b97" width="30%"></img> 
+<img src="https://github.com/user-attachments/assets/35755895-ab03-45f2-a54a-59b9c7c16008" width="30%"></img> 
+<img src="https://github.com/user-attachments/assets/c87320c2-f9bc-487e-9d4d-754f9660cb14" width="30%"></img> 
+<p align="center">
+<img src="https://github.com/user-attachments/assets/21ba1ad7-be7f-4e86-91fd-e922298d0ff5" width="30%"></img> 
+<img src="https://github.com/user-attachments/assets/f54bcb68-0b9c-48a3-9335-2c693042c99b" width="30%"></img> 
+<img src="https://github.com/user-attachments/assets/ab625602-693a-4b09-8edf-33a55b09e8ba" width="30%"></img> 
+</p>
 
 
 
