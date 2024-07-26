@@ -12,30 +12,10 @@ Near is a social networking application refactored to a Flutter version. Origina
 - **Privacy Settings:** Configure k-anonymity settings in your profile for enhanced privacy.
 - **Geo Database:** Uses [`sqlite3_flutter_libs`](https://pub.dev/packages/sqlite3_flutter_libs) and [`flutter_geopackage`](https://pub.dev/packages/flutter_geopackage) to create spatial tables in SQLite and perform spatial queries. The database loads very fast, with query times between 5-50 ms.
 
-
-
-## Installation and Usage
-
-### Prerequisites
+### Requirements
 
 - Minimum SDK for Android: 26
 - Minimum iOS version: 13
-
-### Steps
-
-1. Clone the repository:
-   ```sh
-   git clone https://github.com/stanimeros/near-flutter.git
-2. Navigate to the project directory:
-    ```sh
-    cd near-flutter
-3. Install dependencies:
-    ```sh
-    flutter pub get
-4. Run the application:
-    ```sh
-    flutter run
-<br>
 
 <p align="center">
 <img src="https://github.com/user-attachments/assets/2b8c550a-be09-4a96-91c1-52b4168d9b97" width="30%"></img> 
