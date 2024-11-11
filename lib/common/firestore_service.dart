@@ -328,14 +328,15 @@ class FirestoreService {
         DocumentReference userDocRef = firestore.collection('users').doc(authUser.uid);
         DocumentSnapshot userDoc = await userDocRef.get();
         if (!userDoc.exists){
-          String username = authUser.displayName!.replaceAll(' ', '').toLowerCase();
+          String? username = authUser.displayName?.replaceAll(' ', '').toLowerCase();
+          username ??= authUser.email!.substring(0, authUser.email!.indexOf('@'));
+          
           if (username.length > 8) {
             username = username.substring(0, 8);
           }
           
           int counter = 1;
-          String? someUid = await getUID(username);
-          while (someUid != null) {
+          while (await getUID(username!) != null) {
             username = '$username$counter';
             counter++;
           }

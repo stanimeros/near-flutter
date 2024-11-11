@@ -13,62 +13,157 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
 
   bool isLoading = false;
+  bool isRegistering = false;
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleEmailPasswordAuth() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      isLoading = true;
+    });
+
+    final success = isRegistering
+        ? await AuthService().registerWithEmailPassword(
+            _emailController.text,
+            _passwordController.text,
+          )
+        : await AuthService().signInWithEmailPassword(
+            _emailController.text,
+            _passwordController.text,
+          );
+
+    if (!success) {
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Column(
-          children: [
-            const Spacer(),
-            const Text(
-              'Near',
-              style: TextStyle(
-                fontSize: 36,
-                letterSpacing: 4
-              ),
-            ),
-            const Spacer(),
-            SizedBox(
-              height: 240,
+        child: SingleChildScrollView(
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height - MediaQuery.of(context).padding.top,
+            child: Padding(
+              padding: const EdgeInsets.all(24),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Visibility(
-                    visible: isLoading,
-                    child: const CustomLoader()
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        isRegistering = !isRegistering;
+                      });
+                    },
+                    child: Text(
+                      isRegistering
+                          ? 'Already have an account? Sign In'
+                          : 'Need an account? Register',
+                    ),
                   ),
-                  Visibility(
-                    visible: !isLoading,
+                  const Spacer(),
+                  const Text(
+                    'Near',
+                    style: TextStyle(fontSize: 36, letterSpacing: 4),
+                  ),
+                  const Spacer(),
+                  SizedBox(
+                    height: 400,
                     child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              setState(() {
-                                isLoading = true;
-                              });
-                          
-                              if (!await AuthService().signInWithGoogle()){
-                                setState(() {
-                                  isLoading = false;
-                                });
-                              }
-                            },
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  'Sign in with Google',
+                        Visibility(
+                          visible: isLoading,
+                          child: const CustomLoader(),
+                        ),
+                        Visibility(
+                          visible: !isLoading,
+                          child: Column(
+                            children: [
+                              Form(
+                                key: _formKey,
+                                child: Column(
+                                  children: [
+                                    TextFormField(
+                                      controller: _emailController,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Email',
+                                      ),
+                                      validator: (value) {
+                                        if (value == null || value.isEmpty) {
+                                          return 'Please enter your email';
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                    const SizedBox(height: 16),
+                                    TextFormField(
+                                      controller: _passwordController,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Password',
+                                      ),
+                                      obscureText: true,
+                                      validator: (value) {
+                                        if (value == null || value.isEmpty) {
+                                          return 'Please enter your password';
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                    const SizedBox(height: 24),
+                                    ElevatedButton(
+                                      onPressed: _handleEmailPasswordAuth,
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Text(
+                                            isRegistering ? 'Register' : 'Sign In',
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    const Text('Or'),
+                                    const SizedBox(height: 16),
+                                    ElevatedButton(
+                                      onPressed: () async {
+                                        setState(() {
+                                          isLoading = true;
+                                        });
+                                        
+                                        if (!await AuthService()
+                                            .signInWithGoogle()) {
+                                          setState(() {
+                                            isLoading = false;
+                                          });
+                                        }
+                                      },
+                                      child: const Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Text(
+                                            'Sign in with Google',
+                                          ),
+                                          SizedBox(width: 8),
+                                          Icon(size: 18, LucideIcons.logIn)
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                SizedBox(width: 8),
-                                Icon(
-                                  size: 18,
-                                  LucideIcons.logIn
-                                )
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -77,7 +172,7 @@ class _LoginPageState extends State<LoginPage> {
                 ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );

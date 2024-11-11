@@ -51,7 +51,7 @@ class _FriendsPageState extends State<FriendsPage> {
                   }));
                 }, 
                 icon: const Icon(
-                  size: 26,
+                  size: 24,
                   LucideIcons.userPlus2
                 )
               )

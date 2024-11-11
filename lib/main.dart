@@ -52,7 +52,7 @@ class _MainAppState extends State<MainApp> {
         builder: (context, snapshot) {
           if (snapshot.hasData){
             return FutureBuilder(
-              future: FirestoreService().initializeUser(), //return something because has data is empty
+              future: FirestoreService().initializeUser(),
               builder: (context, snapshot) {
                 if (snapshot.hasData){
                   NearUser? user = snapshot.data;

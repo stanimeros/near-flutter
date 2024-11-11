@@ -120,7 +120,7 @@ class _ProfilePageState extends State<ProfilePage> {
               PickProfilePicture(
                 user: globals.user!,
                 pickImage: pickImage,
-                size: 50,
+                size: 60,
                 color: globals.textColor, 
                 backgroundColor: globals.cachedImageColor
               ),
@@ -142,7 +142,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       saveChanges();
                     },
                     icon: const Icon(
-                      size: 24,
+                      size: 18,
                       LucideIcons.save
                     ),
                   ),
@@ -226,76 +226,71 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ),
           const Spacer(),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
-            child: ElevatedButton(
-              onPressed: () async {
-                AlertDialog popUp = PopUp(
-                  funBtn1: () {
-                    Navigator.pop(context);
-                    FirestoreService().signOut();
-                  },
-                  funBtn2: () {
-                    Navigator.pop(context);
-                  },
-                );
-
-                showDialog(
-                  context: context, 
-                  builder: (BuildContext context) {
-                    return popUp;
-                  }
-                );
-              },
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'Sign out',
-                  ),
-                  SizedBox(width: 8),
-                  Icon(
-                    size: 18,
-                    LucideIcons.logOut
-                  )
-                ],
-              ),
+          ElevatedButton(
+            onPressed: () async {
+              AlertDialog popUp = PopUp(
+                funBtn1: () {
+                  Navigator.pop(context);
+                  FirestoreService().signOut();
+                },
+                funBtn2: () {
+                  Navigator.pop(context);
+                },
+              );
+          
+              showDialog(
+                context: context, 
+                builder: (BuildContext context) {
+                  return popUp;
+                }
+              );
+            },
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'Sign out',
+                ),
+                SizedBox(width: 8),
+                Icon(
+                  size: 18,
+                  LucideIcons.logOut
+                )
+              ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
-            child: ElevatedButton(
-              onPressed: () async {
-                AlertDialog popUp = PopUp(
-                  funBtn1: () {
-                    Navigator.pop(context);
-                    FirestoreService().deleteAccount();
-                  },
-                  funBtn2: () {
-                    Navigator.pop(context);
-                  },
-                );
-
-                showDialog(
-                  context: context, 
-                  builder: (BuildContext context) {
-                    return popUp;
-                  }
-                );
-              },
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'Delete your account',
-                  ),
-                  SizedBox(width: 8),
-                  Icon(
-                    size: 18,
-                    LucideIcons.delete
-                  )
-                ],
-              ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () async {
+              AlertDialog popUp = PopUp(
+                funBtn1: () {
+                  Navigator.pop(context);
+                  FirestoreService().deleteAccount();
+                },
+                funBtn2: () {
+                  Navigator.pop(context);
+                },
+              );
+          
+              showDialog(
+                context: context, 
+                builder: (BuildContext context) {
+                  return popUp;
+                }
+              );
+            },
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'Delete your account',
+                ),
+                SizedBox(width: 8),
+                Icon(
+                  size: 18,
+                  LucideIcons.trash
+                )
+              ],
             ),
           )
         ],

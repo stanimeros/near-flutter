@@ -91,7 +91,7 @@ class _FeedPageState extends State<FeedPage> {
                 Text('Share Location'),
                 SizedBox(width: 8),
                 Icon(
-                  size: 20,
+                  size: 18,
                   LucideIcons.globe
                 )
               ],
