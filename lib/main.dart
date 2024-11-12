@@ -17,10 +17,10 @@ import 'package:flutter_near/widgets/messenger.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dbHelper.initializeDb();
-  await dbHelper.createSpatialTable(dbHelper.pois);
-  await dbHelper.createSpatialTable(dbHelper.keys);
-  // dbHelper.deleteDb();
+  await DbHelper().initializeDb();
+  await DbHelper().createSpatialTable(DbHelper.pois);
+  await DbHelper().createSpatialTable(DbHelper.keys);
+  // DbHelper().deleteDb();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );

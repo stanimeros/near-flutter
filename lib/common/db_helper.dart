@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:math';
 import 'package:dart_jts/dart_jts.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_geopackage/flutter_geopackage.dart';
 import 'package:dart_hydrologis_db/dart_hydrologis_db.dart';
 import 'package:path_provider/path_provider.dart';
@@ -9,15 +9,12 @@ import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
 import 'package:dart_hydrologis_utils/dart_hydrologis_utils.dart';
 
-final dbHelper = DbHelper._();
-
 class DbHelper {
-  DbHelper._();
 
-  late GeopackageDb db;
-  String dbFilename = 'geopoints.gpkg';
-  TableName pois = TableName("pois", schemaSupported: false);
-  TableName keys = TableName("keys", schemaSupported: false);
+  static late GeopackageDb db;
+  static String dbFilename = 'geopoints.gpkg';
+  static TableName pois = TableName("pois", schemaSupported: false);
+  static TableName keys = TableName("keys", schemaSupported: false);
 
   // Function to initialize the database
   Future<void> initializeDb() async {
@@ -26,6 +23,7 @@ class DbHelper {
       Directory directory = await getApplicationDocumentsDirectory();
       String dbPath = '${directory.path}/$dbFilename';
       db = ch.open(dbPath);
+      db = GeopackageDb.memory();
       db.openOrCreate();
       db.forceRasterMobileCompatibility = false;
       debugPrint('Database ready');
@@ -34,7 +32,7 @@ class DbHelper {
     }
   }
 
-  void deleteDb() async {
+  Future<void> deleteDb() async {
     try{
       Directory directory = await getApplicationDocumentsDirectory();
       String dbPath = '${directory.path}/$dbFilename';
@@ -84,7 +82,7 @@ class DbHelper {
     }
   }
 
-  int getRowCount(TableName table) {
+  Future<int> getRowCount(TableName table) async{
     try {
       QueryResult select = db.select("SELECT COUNT(*) AS COUNT FROM ${table.fixedName}");
       QueryResultRow firstRow = select.first;
@@ -96,7 +94,7 @@ class DbHelper {
   }
 
   // Function to add a point to the database
-  void addPointToDb(double lon, double lat, TableName table) {
+  Future<void> addPointToDb(double lon, double lat, TableName table) async{
     GeometryFactory gf = GeometryFactory.defaultPrecision();
     Point point = gf.createPoint(Coordinate(lon, lat));
     List<int> geomBytes = GeoPkgGeomWriter().write(point);
@@ -106,7 +104,7 @@ class DbHelper {
   }
 
   // Function to get points within a bounding box
-  List<Point> getPointsInBoundingBox(Envelope boundingBox, TableName table) {
+  Future<List<Point>> getPointsInBoundingBox(Envelope boundingBox, TableName table) async{
     List<Point> list = [];
 
     DateTime before = DateTime.now();
@@ -125,13 +123,13 @@ class DbHelper {
     return list;
   }
 
-  Point getRandomKNN(int k, double lon, double lat, double bufferMeters) {
+  Future<Point> getRandomKNN(int k, double lon, double lat, double bufferMeters) async {
     List<Point> list = [];
 
     while (list.length < k){
       debugPrint('Creating bbox with side ${bufferMeters*2}m');
-      Envelope boundingBox = createBoundingBox(lon, lat, bufferMeters);
-      List<Point> points = getPointsInBoundingBox(boundingBox, pois);
+      Envelope boundingBox = await createBoundingBox(lon, lat, bufferMeters);
+      List<Point> points = await getPointsInBoundingBox(boundingBox, pois);
 
       if (points.length < k){
         debugPrint('Found ${points.length} points < $k');
@@ -150,7 +148,7 @@ class DbHelper {
     return list[random.nextInt(list.length)];
   }
 
-  Envelope createBoundingBox(double lon, double lat, double bufferMeters){
+  Future<Envelope> createBoundingBox(double lon, double lat, double bufferMeters) async{
     const double metersPerDegree = 111000.0;
     double latBuffer = bufferMeters / metersPerDegree;
     double lonBuffer = bufferMeters / (metersPerDegree * cos(lat * pi / 180));
@@ -173,25 +171,33 @@ class DbHelper {
 
     // Define the URL
     String url = 'https://overpass-api.de/api/map?bbox=$minLat,$minLon,$maxLat,$maxLon';
-
-    // Download the file
     final response = await http.get(Uri.parse(url));
-    if (response.statusCode == 200) {
-      // Parse the XML data
-      XmlDocument document = XmlDocument.parse(response.body);
-      Iterable<XmlElement> points = document.findAllElements('node');
-      debugPrint('Downloaded ${points.length} points');
 
-      // Extract and print all points
-      for (XmlElement point in points) {
-        String? lon = point.getAttribute('lon');
-        String? lat = point.getAttribute('lat');
-        addPointToDb(double.parse(lon!), double.parse(lat!), pois);
+    if (response.statusCode == 200) {
+      final pointsData = await compute(parsePoints, response.body);
+      debugPrint('Downloaded and parsed ${pointsData.length} points');
+
+      if (pointsData.isNotEmpty) {
+        for (Map<String, double> point in pointsData) {
+          await addPointToDb(point['lon']!, point['lat']!, pois);
+        }
+        debugPrint('Inserted ${await getRowCount(pois)} points');
       }
-      debugPrint('Inserted ${points.length} points');
     } else {
       debugPrint('Failed to download the file. Status code: ${response.statusCode}');
-      debugPrint(url);
     }
+  }
+
+  // Helper function to parse XML and extract points data in an isolate
+  List<Map<String, double>> parsePoints(String xmlString){
+    final document = XmlDocument.parse(xmlString);
+    return document.findAllElements('node').map((point) {
+      final lon = point.getAttribute('lon');
+      final lat = point.getAttribute('lat');
+      if (lon != null && lat != null) {
+        return {'lon': double.parse(lon), 'lat': double.parse(lat)};
+      }
+      return null;
+    }).whereType<Map<String, double>>().toList();
   }
 }

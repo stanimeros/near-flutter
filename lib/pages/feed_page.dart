@@ -30,26 +30,26 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   void fetchData () async {
-    // await dbHelper.emptyTable(dbHelper.pois);
-    // await dbHelper.emptyTable(dbHelper.keys);
-    
     setState(() {
       isLoading = true;
     });
+
+    await DbHelper().emptyTable(DbHelper.pois);
+    await DbHelper().emptyTable(DbHelper.keys);
 
     GeoPoint? pos = await LocationService().getCurrentPosition();
     if (pos != null){
       debugPrint('Location: ${pos.latitude.toString()}, ${pos.longitude.toString()}');
 
-      jts.Envelope boundingBox = dbHelper.createBoundingBox(pos.longitude, pos.latitude, 250);
-      List<jts.Point> keys = dbHelper.getPointsInBoundingBox(boundingBox, dbHelper.keys); 
+      jts.Envelope boundingBox = await DbHelper().createBoundingBox(pos.longitude, pos.latitude, 250);
+      List<jts.Point> keys = await DbHelper().getPointsInBoundingBox(boundingBox, DbHelper.keys); 
 
       if (keys.isEmpty){
-        await dbHelper.downloadPointsFromOSM(boundingBox);
-        dbHelper.addPointToDb(pos.longitude, pos.latitude, dbHelper.keys);
+        await DbHelper().downloadPointsFromOSM(boundingBox);
+        await DbHelper().addPointToDb(pos.longitude, pos.latitude, DbHelper.keys);
       } 
 
-      jts.Point random = dbHelper.getRandomKNN(globals.user!.kAnonymity, pos.longitude, pos.latitude, 50);
+      jts.Point random = await DbHelper().getRandomKNN(globals.user!.kAnonymity, pos.longitude, pos.latitude, 50);
       debugPrint('New Location: ${random.getY()}, ${random.getX()}');
       await FirestoreService().setLocation(random.getX(), random.getY());
     }
