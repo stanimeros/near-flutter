@@ -30,8 +30,8 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   void fetchData () async {
-    await dbHelper.emptyTable(dbHelper.pois);
-    await dbHelper.emptyTable(dbHelper.keys);
+    // await dbHelper.emptyTable(dbHelper.pois);
+    // await dbHelper.emptyTable(dbHelper.keys);
     
     setState(() {
       isLoading = true;
