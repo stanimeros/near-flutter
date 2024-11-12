@@ -6,7 +6,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_near/common/location_service.dart';
-import 'package:flutter_near/common/message.dart';
 import 'package:flutter_near/common/near_user.dart';
 
 class FirestoreService {
@@ -90,77 +89,6 @@ class FirestoreService {
       debugPrint('Error getUsersRequested: $e');
       return [];
     }
-  }
-
-  Stream<DocumentSnapshot> getChatSnapshot(NearUser friend){
-    List<String> ids = [authUser.uid, friend.uid];
-    ids.sort();
-    String chatId = ids.join('_');
-
-    var chatSnapshot = firestore
-      .collection('chats')
-      .doc(chatId)
-      .snapshots();
-
-    return chatSnapshot;
-  }
-
-  Stream<QuerySnapshot> getChatsSnapshot(){
-    var chatsSnapshot = firestore
-      .collection('chats')
-      .where('users', arrayContains: authUser.uid)
-      .snapshots();
-
-    return chatsSnapshot;
-  }
-
-  void sendMessage(NearUser friend, String content) async {
-    if (content.isEmpty){
-      return;
-    }
-    // Create a Message object with necessary data
-    Message message = Message(
-      uid: authUser.uid,
-      friendUid: friend.uid,
-      content: content,
-      timestamp: DateTime.now(),
-    );
-
-    // Convert the Message object to a map for Firestore
-    Map<String, dynamic> messageData = {
-      'uid': message.uid,
-      // 'friendUid': message.friendUid,
-      'content': message.content,
-      'timestamp': message.timestamp,
-    };
-
-    List<String> ids = [authUser.uid, friend.uid];
-    ids.sort();
-    String chatId = ids.join('_');
-    DocumentReference chatDocRef = firestore.collection('chats').doc(chatId);
-    DocumentSnapshot chatDoc = await chatDocRef.get();
-
-    if (chatDoc.exists) {
-      // If the document exists, update it by adding the new message
-      await chatDocRef.update({
-        'messages': FieldValue.arrayUnion([messageData]),
-      });
-    } else {
-      // If the document does not exist, create it with the new message
-      await chatDocRef.set({
-        'users' : [authUser.uid, friend.uid],
-        'messages': [messageData],
-      });
-    }
-  }
-
-  void deleteMessages(NearUser friend) async {
-    List<String> ids = [authUser.uid, friend.uid];
-    ids.sort();
-    String chatId = ids.join('_');
-
-    DocumentReference chatDocRef = firestore.collection('chats').doc(chatId);
-    await chatDocRef.delete();
   }
 
   Future<void> sendRequest(String username) async {
@@ -364,19 +292,9 @@ class FirestoreService {
 
   void deleteAccount() async {
 
-    // Delete user messages
-    QuerySnapshot chatsSnapshot = await firestore
-      .collection('chats')
-      .where('users', arrayContains: authUser.uid)
-      .get();
-
-    for (var doc in chatsSnapshot.docs) {
-      await doc.reference.delete();
-    }
-
     // Delete user requests
     QuerySnapshot requestsSnapshot = await firestore
-      .collection('posts')
+      .collection('requests')
       .where('uid', isEqualTo: authUser.uid)
       .get();
 
@@ -385,7 +303,7 @@ class FirestoreService {
     }
 
     requestsSnapshot = await firestore
-      .collection('posts')
+      .collection('requests')
       .where('fuid', isEqualTo: authUser.uid)
       .get();
 

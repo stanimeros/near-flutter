@@ -34,17 +34,6 @@ class _RequestsPageState extends State<RequestsPage> {
             children: [
               Row(
                 children: [
-                  IconButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                    }, 
-                    icon: const Icon(
-                      LucideIcons.arrowLeft
-                    )
-                  ),
-                  const SizedBox(
-                    width: 12,
-                  ),
                   const Text(
                     'Requests',
                     style: TextStyle(

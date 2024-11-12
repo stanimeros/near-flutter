@@ -7,11 +7,11 @@ import 'package:flutter_near/common/firestore_service.dart';
 import 'package:flutter_near/common/db_helper.dart';
 import 'package:flutter_near/common/near_user.dart';
 import 'package:flutter_near/firebase_options.dart';
-import 'package:flutter_near/pages/chats_page.dart';
 import 'package:flutter_near/pages/feed_page.dart';
 import 'package:flutter_near/pages/friends_page.dart';
 import 'package:flutter_near/pages/login_page.dart';
 import 'package:flutter_near/pages/profile_page.dart';
+import 'package:flutter_near/pages/requests_page.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:flutter_near/widgets/messenger.dart';
 
@@ -68,7 +68,7 @@ class _MainAppState extends State<MainApp> {
                           children: [
                             const FeedPage(),
                             const FriendsPage(),
-                            ChatsPage(),
+                            const RequestsPage(),
                             ProfilePage()
                           ],
                         ),

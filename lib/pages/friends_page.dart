@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_near/common/firestore_service.dart';
 import 'package:flutter_near/common/near_user.dart';
-import 'package:flutter_near/common/slide_page_route.dart';
-import 'package:flutter_near/pages/requests_page.dart';
-import 'package:flutter_near/widgets/chat.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:flutter_near/widgets/messenger.dart';
 import 'package:flutter_near/widgets/profile_picture.dart';
@@ -40,21 +37,6 @@ class _FriendsPageState extends State<FriendsPage> {
                   fontSize: 24
                 ),
               ),
-              const Spacer(),
-              IconButton(
-                onPressed: () {
-                  Navigator.push(
-                    context, 
-                    SlidePageRoute(page: const RequestsPage()),
-                  ).then((value) => setState((){
-                    futureList = FirestoreService().getFriends();
-                  }));
-                }, 
-                icon: const Icon(
-                  size: 24,
-                  LucideIcons.userPlus2
-                )
-              )
             ],
           ),
           Expanded(
@@ -95,19 +77,6 @@ class _FriendsPageState extends State<FriendsPage> {
                               backgroundColor: globals.cachedImageColor
                             ),
                             title: Text(friends[index].username),
-                            trailing: IconButton(
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  SlidePageRoute(page: Chat(friend: friends[index]))
-                                ).then((value) => setState(() {
-                                  futureList = FirestoreService().getFriends();
-                                }));
-                              },
-                              icon: const Icon(
-                                LucideIcons.messageCircle
-                              ),
-                            ),
                           ),
                         );
                       }
