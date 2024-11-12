@@ -187,17 +187,17 @@ class DbHelper {
       debugPrint('Failed to download the file. Status code: ${response.statusCode}');
     }
   }
+}
 
-  // Helper function to parse XML and extract points data in an isolate
-  List<Map<String, double>> parsePoints(String xmlString){
-    final document = XmlDocument.parse(xmlString);
-    return document.findAllElements('node').map((point) {
-      final lon = point.getAttribute('lon');
-      final lat = point.getAttribute('lat');
-      if (lon != null && lat != null) {
-        return {'lon': double.parse(lon), 'lat': double.parse(lat)};
-      }
-      return null;
-    }).whereType<Map<String, double>>().toList();
-  }
+// Helper function to parse XML and extract points data in an isolate
+List<Map<String, double>> parsePoints(String xmlString){
+  final document = XmlDocument.parse(xmlString);
+  return document.findAllElements('node').map((point) {
+    final lon = point.getAttribute('lon');
+    final lat = point.getAttribute('lat');
+    if (lon != null && lat != null) {
+      return {'lon': double.parse(lon), 'lat': double.parse(lat)};
+    }
+    return null;
+  }).whereType<Map<String, double>>().toList();
 }
