@@ -120,7 +120,7 @@ class _ProfilePageState extends State<ProfilePage> {
               PickProfilePicture(
                 user: globals.user!,
                 pickImage: pickImage,
-                size: 60,
+                size: 55,
                 color: globals.textColor, 
                 backgroundColor: globals.cachedImageColor
               ),
@@ -283,7 +283,7 @@ class _ProfilePageState extends State<ProfilePage> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  'Delete your account',
+                  'Delete your data',
                 ),
                 SizedBox(width: 8),
                 Icon(

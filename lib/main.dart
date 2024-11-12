@@ -23,7 +23,7 @@ void main() async {
   // dbHelper.deleteDb();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
-);
+  );
   runApp(const MainApp());
 }
 

@@ -8,10 +8,8 @@ import 'package:flutter_near/common/near_user.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:flutter_near/widgets/messenger.dart';
 import 'package:flutter_near/widgets/profile_picture.dart';
-import 'package:lucide_icons/lucide_icons.dart';
 import 'package:dart_jts/dart_jts.dart' as jts;
 import 'package:flutter_near/common/globals.dart' as globals;
-
 
 class FeedPage extends StatefulWidget {
   const FeedPage({super.key});
@@ -22,15 +20,44 @@ class FeedPage extends StatefulWidget {
 
 class _FeedPageState extends State<FeedPage> {
 
-  bool isPressed = false;
+  bool isLoading = false;
   Future<List<NearUser>>? futureList;
 
   @override
   void initState() {
     super.initState();
-    if (globals.user!.location != null){
-      futureList = FirestoreService().getFriends();
+    fetchData();
+  }
+
+  void fetchData () async {
+    await dbHelper.emptyTable(dbHelper.pois);
+    await dbHelper.emptyTable(dbHelper.keys);
+    
+    setState(() {
+      isLoading = true;
+    });
+
+    GeoPoint? pos = await LocationService().getCurrentPosition();
+    if (pos != null){
+      debugPrint('Location: ${pos.latitude.toString()}, ${pos.longitude.toString()}');
+
+      jts.Envelope boundingBox = dbHelper.createBoundingBox(pos.longitude, pos.latitude, 250);
+      List<jts.Point> keys = dbHelper.getPointsInBoundingBox(boundingBox, dbHelper.keys); 
+
+      if (keys.isEmpty){
+        await dbHelper.downloadPointsFromOSM(boundingBox);
+        dbHelper.addPointToDb(pos.longitude, pos.latitude, dbHelper.keys);
+      } 
+
+      jts.Point random = dbHelper.getRandomKNN(globals.user!.kAnonymity, pos.longitude, pos.latitude, 50);
+      debugPrint('New Location: ${random.getY()}, ${random.getX()}');
+      await FirestoreService().setLocation(random.getX(), random.getY());
     }
+
+    setState(() {
+      isLoading = false;
+      futureList = FirestoreService().getFriends();
+    });
   }
 
   @override
@@ -52,52 +79,6 @@ class _FeedPageState extends State<FeedPage> {
           const SizedBox(
             height: 16
           ),
-          ElevatedButton(
-            style: const ButtonStyle(
-              minimumSize: WidgetStatePropertyAll(Size(double.infinity, 50)),
-            ),
-            onPressed: () async {
-              if (!isPressed){
-                setState(() {
-                  isPressed = true;
-                });
-                
-                GeoPoint? pos = await LocationService().getCurrentPosition();
-                if (pos != null){
-                  debugPrint('Location: ${pos.latitude.toString()}, ${pos.longitude.toString()}');
-
-                  jts.Envelope boundingBox = dbHelper.createBoundingBox(pos.longitude, pos.latitude, 250);
-                  List<jts.Point> keys = dbHelper.getPointsInBoundingBox(boundingBox, dbHelper.keys); 
-
-                  if (keys.isEmpty){
-                    await dbHelper.downloadPointsFromOSM(boundingBox);
-                    dbHelper.addPointToDb(pos.longitude, pos.latitude, dbHelper.keys);
-                  } 
-
-                  jts.Point random = dbHelper.getRandomKNN(globals.user!.kAnonymity, pos.longitude, pos.latitude, 50);
-                  debugPrint('New Location: ${random.getY()}, ${random.getX()}');
-                  await FirestoreService().setLocation(random.getX(), random.getY());
-                }
-
-                setState(() {
-                  isPressed = false;
-                  futureList = FirestoreService().getFriends();
-                });
-              }
-            }, 
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text('Share Location'),
-                SizedBox(width: 8),
-                Icon(
-                  size: 18,
-                  LucideIcons.globe
-                )
-              ],
-            )
-          ),
-          const SizedBox(height: 30),
           Expanded(
             child: globals.user!.location != null ?
             FutureBuilder(
@@ -107,16 +88,16 @@ class _FeedPageState extends State<FeedPage> {
                   List<NearUser> friends = snapshot.data!;
                   List<NearUser> oFriends = globals.user!.getUsersOrderedByLocation(friends);
 
-                  if (!oFriends.any((friend) => friend.uid == 'device')){
-                    NearUser device = NearUser(
-                      uid: 'device', 
-                      username: 'device', 
-                      email: 'device', 
-                      joined: globals.user!.joined,
-                      location: globals.deviceLocation
-                    );
-                    oFriends.insert(0, device);
-                  }
+                  // if (!oFriends.any((friend) => friend.uid == 'device')){
+                  //   NearUser device = NearUser(
+                  //     uid: 'device', 
+                  //     username: 'device', 
+                  //     email: 'device', 
+                  //     joined: globals.user!.joined,
+                  //     location: globals.deviceLocation
+                  //   );
+                  //   oFriends.insert(0, device);
+                  // }
 
                   if (!oFriends.any((friend) => friend.uid == globals.user!.uid)){
                     oFriends.insert(0, globals.user!);
@@ -128,16 +109,17 @@ class _FeedPageState extends State<FeedPage> {
                       itemCount: oFriends.length,
                       itemBuilder: (builder, index){
                         return ListTile(
+                          contentPadding: EdgeInsets.zero,
                           leading: ProfilePicture(
                             user: oFriends[index],
-                            size: 40,
+                            size: 45,
                             color: globals.textColor, 
                             backgroundColor: globals.cachedImageColor
                           ),
                           title: Text(oFriends[index].username),
-                          trailing: Text(
-                            globals.user!.getConvertedDistanceBetweenUser(oFriends[index])
-                          ),
+                          // trailing: Text(
+                          //   globals.user!.getConvertedDistanceBetweenUser(oFriends[index])
+                          // ),
                         );
                       }
                     );
