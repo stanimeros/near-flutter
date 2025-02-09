@@ -42,11 +42,11 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>This app needs access to location when open.</string>
+	<string>This app needs access to location when open to show nearby points of interest.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>This app needs access to location when open.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
-	<string>This app needs access to location when open.</string>
+	<string>This app needs access to location when in the background to show nearby points of interest.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>We need access to your camera to take photos for profile pictures.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

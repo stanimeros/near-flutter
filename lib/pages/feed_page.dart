@@ -29,25 +29,31 @@ class _FeedPageState extends State<FeedPage> {
     fetchData();
   }
 
+  @override
+  void dispose() {
+    super.dispose();
+    futureList = null;
+  }
+
   void fetchData () async {
     setState(() {
       isLoading = true;
     });
 
-    await DbHelper().emptyTable(DbHelper.pois);
-    await DbHelper().emptyTable(DbHelper.keys);
+    // await DbHelper().emptyTable(DbHelper.pois);
+    // await DbHelper().emptyTable(DbHelper.keys);
 
     GeoPoint? pos = await LocationService().getCurrentPosition();
     if (pos != null){
       debugPrint('Location: ${pos.latitude.toString()}, ${pos.longitude.toString()}');
 
-      jts.Envelope boundingBox = await DbHelper().createBoundingBox(pos.longitude, pos.latitude, 250);
+      jts.Envelope boundingBox = await DbHelper().createBoundingBox(pos.longitude, pos.latitude, 100);
       List<jts.Point> keys = await DbHelper().getPointsInBoundingBox(boundingBox, DbHelper.keys); 
 
       if (keys.isEmpty){
         await DbHelper().downloadPointsFromOSM(boundingBox);
         await DbHelper().addPointToDb(pos.longitude, pos.latitude, DbHelper.keys);
-      } 
+      }
 
       jts.Point random = await DbHelper().getRandomKNN(globals.user!.kAnonymity, pos.longitude, pos.latitude, 50);
       debugPrint('New Location: ${random.getY()}, ${random.getX()}');

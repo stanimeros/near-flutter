@@ -23,7 +23,7 @@ class DbHelper {
       Directory directory = await getApplicationDocumentsDirectory();
       String dbPath = '${directory.path}/$dbFilename';
       db = ch.open(dbPath);
-      db = GeopackageDb.memory();
+      // db = GeopackageDb.memory(); //Will not use the file db
       db.openOrCreate();
       db.forceRasterMobileCompatibility = false;
       debugPrint('Database ready');

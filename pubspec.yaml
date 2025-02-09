@@ -33,6 +33,10 @@ dependencies:
   cached_network_image: ^3.4.1
   image_picker: ^1.1.2
   flutter_launcher_icons: ^0.14.3
+  kmeans: ^1.0.0
+  k_means_cluster: ^0.3.0
+  simple_cluster: ^0.3.0
+  google_maps_flutter: ^2.10.0
   
 dev_dependencies:
   flutter_test:

@@ -38,6 +38,10 @@ class _BottomNavBarState extends State<BottomNavBar> {
           label: 'Friends',
         ),
         BottomNavigationBarItem(
+          icon: Icon(LucideIcons.map),
+          label: 'Map',
+        ),
+        BottomNavigationBarItem(
           icon: Icon(LucideIcons.plusCircle),
           label: 'Requests',
         ),
