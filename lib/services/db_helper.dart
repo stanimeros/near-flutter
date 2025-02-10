@@ -4,8 +4,8 @@ import 'package:dart_jts/dart_jts.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_geopackage/flutter_geopackage.dart';
 import 'package:dart_hydrologis_db/dart_hydrologis_db.dart';
+import 'package:flutter_near/services/osm_service.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
 import 'package:dart_hydrologis_utils/dart_hydrologis_utils.dart';
 
@@ -14,6 +14,7 @@ class DbHelper {
   static late GeopackageDb db;
   static String dbFilename = 'geopoints.gpkg';
   static TableName pois = TableName("pois", schemaSupported: false);
+  static TableName cells = TableName("cells", schemaSupported: false);
   static TableName keys = TableName("keys", schemaSupported: false);
 
   // Function to initialize the database
@@ -104,13 +105,13 @@ class DbHelper {
   }
 
   // Function to get points within a bounding box
-  Future<List<Point>> getPointsInBoundingBox(Envelope boundingBox, TableName table) async{
-    List<Point> list = [];
+  Future<List<Point>> getPointsInBoundingBox(Envelope boundingBox) async {
+    await OSMService().ensurePointsInArea(boundingBox);
 
+    List<Point> list = [];
     DateTime before = DateTime.now();
     List<Geometry?> geometries = db.getGeometriesIn(
-      table, 
-      envelope: boundingBox
+      pois, envelope: boundingBox
     );
     DateTime after = DateTime.now();
     debugPrint('Query took ${after.difference(before).inMilliseconds.toString()}ms');
@@ -129,7 +130,7 @@ class DbHelper {
     while (list.length < k){
       debugPrint('Creating bbox with side ${bufferMeters*2}m');
       Envelope boundingBox = await createBoundingBox(lon, lat, bufferMeters);
-      List<Point> points = await getPointsInBoundingBox(boundingBox, pois);
+      List<Point> points = await getPointsInBoundingBox(boundingBox);
 
       if (points.length < k){
         debugPrint('Found ${points.length} points < $k');
@@ -161,31 +162,6 @@ class DbHelper {
     );
 
     return boundingBox;
-  }
-
-  Future<void> downloadPointsFromOSM(Envelope boundingBox) async{
-    double minLon = boundingBox.getMinY();
-    double minLat = boundingBox.getMinX();
-    double maxLon = boundingBox.getMaxY();
-    double maxLat = boundingBox.getMaxX();
-
-    // Define the URL
-    String url = 'https://overpass-api.de/api/map?bbox=$minLat,$minLon,$maxLat,$maxLon';
-    final response = await http.get(Uri.parse(url));
-
-    if (response.statusCode == 200) {
-      final pointsData = await compute(parsePoints, response.body);
-      debugPrint('Downloaded and parsed ${pointsData.length} points');
-
-      if (pointsData.isNotEmpty) {
-        for (Map<String, double> point in pointsData) {
-          await addPointToDb(point['lon']!, point['lat']!, pois);
-        }
-        debugPrint('Inserted ${await getRowCount(pois)} points');
-      }
-    } else {
-      debugPrint('Failed to download the file. Status code: ${response.statusCode}');
-    }
   }
 }
 

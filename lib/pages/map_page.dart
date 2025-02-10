@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:dart_jts/dart_jts.dart' as jts;
@@ -12,6 +14,7 @@ import 'package:simple_cluster/simple_cluster.dart';
 
 enum ClusteringAlgorithm {
   none,
+  random,
   kMeans1,
   kMeans2,
   dbscan,
@@ -37,6 +40,9 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   ClusteringAlgorithm selectedAlgorithm = ClusteringAlgorithm.none;
   bool _isCameraMoving = false;
 
+  static const int targetPoints = 20;  // Desired number of points
+  static const double minDistance = 0.0003;  // Min distance between points
+
   @override
   void initState() {
     super.initState();
@@ -46,21 +52,16 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    if (_mapController != null) {
-      _mapController!.dispose();
-      _mapController = null;
-    }
+    _mapController?.dispose();
+    _mapController = null;
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) {
-      if (_mapController != null) {
-        _mapController!.dispose();
-        _mapController = null;
-      }
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      _mapController?.dispose();
+      _mapController = null;
     }
   }
 
@@ -91,6 +92,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   void _onMapCreated(GoogleMapController controller) {
     if (!mounted) return;
     
+    // Dispose of any existing controller first
     _mapController?.dispose();
     
     setState(() {
@@ -98,7 +100,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       isMapCreated = true;
     });
     
-    _loadPOIs();  // Remove the delay, load immediately
+    _loadPOIs();
   }
 
   void _onCameraMove(CameraPosition position) {
@@ -142,7 +144,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
           ],
           strokeWidth: 2,
           strokeColor: Colors.red,
-          fillColor: Colors.red.withAlpha(100),
+          fillColor: Colors.red.withAlpha(50),
         ),
       );
 
@@ -154,54 +156,48 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         paddedNE.latitude,
       );
 
-      List<jts.Point> points = await DbHelper().getPointsInBoundingBox(boundingBox, DbHelper.pois);
-      
-      if (points.isEmpty) {
-        await DbHelper().downloadPointsFromOSM(boundingBox);
-        points = await DbHelper().getPointsInBoundingBox(boundingBox, DbHelper.pois);
-      }
+      // First try to get points from DB
+      List<jts.Point> points = await DbHelper().getPointsInBoundingBox(boundingBox);
 
       List<jts.Point> filteredPoints = [];
-      Set<Marker> markers = {};
+      final zoom = await _mapController!.getZoomLevel();
       
-      // Filter POIs based on selected algorithm
       switch (selectedAlgorithm) {
         case ClusteringAlgorithm.none:
-          // Show all points if less than 100
-          // if (points.length > 100) {
-          //   points.shuffle();
-          //   filteredPoints = points.take(100).toList();
-          // } else {
-          //   filteredPoints = points;
-          // }
           filteredPoints = points;
+          break;
+
+        case ClusteringAlgorithm.random:
+          points.shuffle();
+          filteredPoints = points.take(targetPoints).toList();
           break;
           
         case ClusteringAlgorithm.kMeans1:
-          final kmeans1 = KMeansCluster1(k: points.length > 100 ? 10 : 5);
+          final k = max(3, min(15, points.length ~/ 10));
+          final kmeans1 = KMeansCluster1(k: k);
           filteredPoints = kmeans1.filterPOIs(points);
           break;
           
         case ClusteringAlgorithm.kMeans2:
-          final kmeans2 = KMeansCluster2(k: points.length > 100 ? 10 : 5);
+          final k = max(3, min(15, points.length ~/ 10));
+          final kmeans2 = KMeansCluster2(k: k);
           filteredPoints = kmeans2.filterPOIs(points);
           break;
           
         case ClusteringAlgorithm.dbscan:
-          // Adjusted epsilon based on map zoom level
-          final zoom = await _mapController!.getZoomLevel();
-          final epsilon = zoom > 16 ? 0.0003 : 0.0006; // Adjusted values
+          double epsilon = minDistance * (20 / zoom);
           final dbscan = DBSCANCluster(
             epsilon: epsilon,
-            minPoints: points.length > 100 ? 3 : 2, // Reduced minPoints
+            minPoints: max(2, min(5, points.length ~/ 50)),
           );
           filteredPoints = dbscan.filterPOIs(points);
           break;
           
         case ClusteringAlgorithm.hierarchical:
+          final minClusters = max(3, min(15, points.length ~/ targetPoints));
           final hierarchical = HierarchicalCluster(
-            minClusters: points.length > 100 ? 15 : 8,
-            linkageType: LINKAGE.AVERAGE, // Try AVERAGE instead of SINGLE
+            minClusters: minClusters,
+            linkageType: LINKAGE.AVERAGE,
           );
           filteredPoints = hierarchical.filterPOIs(points);
           break;
@@ -209,7 +205,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
       // Create markers for filtered points
       for (var point in filteredPoints) {
-        markers.add(
+        _markers.add(
           Marker(
             markerId: MarkerId('${point.getX()}-${point.getY()}'),
             position: LatLng(point.getY(), point.getX()),
@@ -220,7 +216,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
       if (mounted) {
         setState(() {
-          _markers = markers;
+          _markers = _markers;
           _polygons = _polygons;
           isLoadingPOIs = false;
         });
@@ -244,6 +240,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     switch (algorithm) {
       case ClusteringAlgorithm.none:
         return BitmapDescriptor.defaultMarker;
+      case ClusteringAlgorithm.random:
+        return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
       case ClusteringAlgorithm.kMeans1:
         return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue);
       case ClusteringAlgorithm.kMeans2:
