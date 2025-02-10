@@ -28,13 +28,18 @@ if (flutterVersionName == null) {
 
 android {
     namespace = "com.stanimeros.near"
-    // compileSdk = flutter.compileSdkVersion
-    compileSdk = 34
-    ndkVersion = flutter.ndkVersion
+    // compileSdk = 35
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = "27.0.12077973"
+    // ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_1_8
     }
 
     defaultConfig {
@@ -42,7 +47,7 @@ android {
         applicationId = "com.stanimeros.near"
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
-        minSdk = 26
+        minSdk = 28
         targetSdk = flutter.targetSdkVersion
         versionCode = flutterVersionCode.toInteger()
         versionName = flutterVersionName

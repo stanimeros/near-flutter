@@ -12,7 +12,7 @@ dependencies:
   dart_jts: ^0.2.6
   dart_hydrologis_db: ^1.1.1
   dart_hydrologis_utils: ^0.8.1+2
-  sqlite3_flutter_libs: ^0.5.27
+  sqlite3_flutter_libs: ^0.5.30
   flutter_geopackage: ^0.6.4+2
   # sqlite3: ^2.4.4
   # sqflite: ^2.3.3+1
