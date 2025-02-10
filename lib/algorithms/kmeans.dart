@@ -32,27 +32,29 @@ class KMeansCluster1 {
     // Run k-means
     kmeans1.kMeans(clusters: clusters, instances: instances);
 
-    // Get the largest cluster
-    kmeans1.Cluster largestCluster = clusters.reduce((curr, next) => 
-      curr.instances.length > next.instances.length ? curr : next
-    );
+    List<int> selectedIndices = [];
 
-    // If no points in largest cluster, return empty list
-    if (largestCluster.instances.isEmpty) return [];
+    // Take points from each cluster
+    for (var cluster in clusters) {
+      if (cluster.instances.isEmpty) continue;
+      
+      // Shuffle cluster points
+      cluster.instances.shuffle();
+      
+      // Take up to 10 points from each cluster
+      int pointsToTake = cluster.instances.length > 10 ? 10 : cluster.instances.length;
+      selectedIndices.addAll(
+        cluster.instances.take(pointsToTake).map((instance) => 
+          instances.indexOf(instance)
+        )
+      );
+    }
 
-    // Shuffle and take up to 50 points from the largest cluster
-    largestCluster.instances.shuffle();
-    List<kmeans1.Instance> selectedInstances = largestCluster.instances.take(50).toList();
+    // If no points selected, return empty list
+    if (selectedIndices.isEmpty) return [];
 
     // Convert back to Points
-    return selectedInstances.map((instance) {
-      List<num> location = instance.location;
-      return Point(
-        Coordinate(location[0].toDouble(), location[1].toDouble()),
-        PrecisionModel(),
-        4326
-      );
-    }).toList();
+    return selectedIndices.map((index) => points[index]).toList();
   }
 }
 
@@ -81,34 +83,34 @@ class KMeansCluster2 {
       maxK: k,
     );
 
-    // Find the largest cluster
-    int largestClusterIndex = 0;
-    int maxSize = 0;
-    
-    for (int i = 0; i < clusters.clusterPoints.length; i++) {
-      if (clusters.clusterPoints[i].length > maxSize) {
-        maxSize = clusters.clusterPoints[i].length;
-        largestClusterIndex = i;
+    List<int> selectedIndices = [];
+
+    // Take points from each cluster
+    for (var i = 0; i < clusters.clusterPoints.length; i++) {
+      var clusterPoints = clusters.clusterPoints[i];
+      if (clusterPoints.isEmpty) continue;
+      
+      // Shuffle cluster points
+      clusterPoints.shuffle();
+      
+      // Take up to 10 points from each cluster
+      int pointsToTake = clusterPoints.length > 10 ? 10 : clusterPoints.length;
+      
+      // Find indices of selected points in original dataset
+      for (var point in clusterPoints.take(pointsToTake)) {
+        int index = dataset.indexWhere((p) => 
+          p[0] == point[0] && p[1] == point[1]
+        );
+        if (index != -1) {
+          selectedIndices.add(index);
+        }
       }
     }
 
-    // If no points in largest cluster, return empty list
-    if (maxSize == 0) return [];
-
-    // Get points from the largest cluster
-    final clusterPoints = clusters.clusterPoints[largestClusterIndex];
-    
-    // Shuffle and take up to 50 points
-    clusterPoints.shuffle();
-    List<List<double>> selectedPoints = clusterPoints.take(50).toList();
+    // If no points selected, return empty list
+    if (selectedIndices.isEmpty) return [];
     
     // Convert back to Points
-    return selectedPoints.map((coords) => 
-      Point(
-        Coordinate(coords[0], coords[1]),
-        PrecisionModel(),
-        4326
-      )
-    ).toList();
+    return selectedIndices.map((index) => points[index]).toList();
   }
 }
