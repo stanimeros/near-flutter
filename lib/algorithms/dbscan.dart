@@ -16,7 +16,7 @@ class DBSCANCluster {
     );
   }
 
-  Point? clusterPOIs(List<Point> points) {
+  List<Point> filterPOIs(List<Point> points) {
     // Convert Points to List<List<double>> format
     List<List<double>> dataset = points.map((point) => [
       point.getX(),
@@ -26,22 +26,22 @@ class DBSCANCluster {
     // Run DBSCAN
     List<List<int>> clusters = _dbscan.run(dataset);
     
-    // If no clusters found, return null
-    if (clusters.isEmpty) return null;
+    // If no clusters found, return empty list
+    if (clusters.isEmpty) return [];
 
     // Get the largest cluster
     List<int> largestCluster = clusters.reduce((curr, next) => 
       curr.length > next.length ? curr : next
     );
 
-    // If no points in largest cluster, return null
-    if (largestCluster.isEmpty) return null;
+    // If no points in largest cluster, return empty list
+    if (largestCluster.isEmpty) return [];
 
-    // Return a random point from the largest cluster
+    // Shuffle and take up to 50 points from the largest cluster
     largestCluster.shuffle();
-    int randomIndex = largestCluster[0];
+    List<int> selectedIndices = largestCluster.take(50).toList();
     
-    return points[randomIndex];
+    return selectedIndices.map((index) => points[index]).toList();
   }
 
   List<List<int>> getClusters(List<Point> points) {

@@ -9,8 +9,8 @@ class KMeansCluster1 {
     required this.k,
   });
 
-  Point? clusterPOIs(List<Point> points) {
-    if (points.isEmpty) return null;
+  List<Point> filterPOIs(List<Point> points) {
+    if (points.isEmpty) return [];
 
     // Convert Points to List<List<double>> format
     List<List<double>> dataset = points.map((point) => [
@@ -37,13 +37,22 @@ class KMeansCluster1 {
       curr.instances.length > next.instances.length ? curr : next
     );
 
-    // Return a random point from the largest cluster
-    if (largestCluster.instances.isEmpty) return null;
-    
+    // If no points in largest cluster, return empty list
+    if (largestCluster.instances.isEmpty) return [];
+
+    // Shuffle and take up to 50 points from the largest cluster
     largestCluster.instances.shuffle();
-    List<num> randomLocation = largestCluster.instances.first.location;
-    
-    return Point(Coordinate(randomLocation[0].toDouble(), randomLocation[1].toDouble()), PrecisionModel(), 4326);
+    List<kmeans1.Instance> selectedInstances = largestCluster.instances.take(50).toList();
+
+    // Convert back to Points
+    return selectedInstances.map((instance) {
+      List<num> location = instance.location;
+      return Point(
+        Coordinate(location[0].toDouble(), location[1].toDouble()),
+        PrecisionModel(),
+        4326
+      );
+    }).toList();
   }
 }
 
@@ -54,8 +63,8 @@ class KMeansCluster2 {
     required this.k,
   });
 
-  Point? clusterPOIs(List<Point> points) {
-    if (points.isEmpty) return null;
+  List<Point> filterPOIs(List<Point> points) {
+    if (points.isEmpty) return [];
 
     // Convert Points to List<List<double>> format
     List<List<double>> dataset = points.map((point) => [
@@ -83,14 +92,23 @@ class KMeansCluster2 {
       }
     }
 
-    // If no points in largest cluster, return null
-    if (maxSize == 0) return null;
+    // If no points in largest cluster, return empty list
+    if (maxSize == 0) return [];
 
-    // Return a random point from the largest cluster
+    // Get points from the largest cluster
     final clusterPoints = clusters.clusterPoints[largestClusterIndex];
-    clusterPoints.shuffle();
-    List<double> randomPoint = clusterPoints.first;
     
-    return Point(Coordinate(randomPoint[0], randomPoint[1]), PrecisionModel(), 4326);
+    // Shuffle and take up to 50 points
+    clusterPoints.shuffle();
+    List<List<double>> selectedPoints = clusterPoints.take(50).toList();
+    
+    // Convert back to Points
+    return selectedPoints.map((coords) => 
+      Point(
+        Coordinate(coords[0], coords[1]),
+        PrecisionModel(),
+        4326
+      )
+    ).toList();
   }
 }
