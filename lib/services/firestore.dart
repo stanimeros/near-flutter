@@ -1,24 +1,25 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:flutter_near/common/globals.dart' as globals;
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_near/common/location_service.dart';
-import 'package:flutter_near/common/near_user.dart';
+import 'package:flutter_near/services/near_user.dart';
 
 class FirestoreService {
-  User authUser = FirebaseAuth.instance.currentUser!;
   FirebaseFirestore firestore = FirebaseFirestore.instance;
+
+  Future<void> createUser(String uid, String email) async {
+    await firestore.collection('users').doc(uid).set({
+      'uid': uid,
+      'email': email,
+      'joined': FieldValue.serverTimestamp(),
+    });
+  }
 
   Future<NearUser?> getUser(String uid) async {
     try {
       var snapshot = await firestore.collection('users').doc(uid).get();
       NearUser user = NearUser.fromFirestore(snapshot);
-      if (authUser.uid == uid){
-        globals.user = user;
-      }
       return user;
     } catch (e) {
       debugPrint('Error getUser: $e');
@@ -26,12 +27,12 @@ class FirestoreService {
     }
   }
 
-  Future<List<NearUser>> getFriends() async {
+  Future<List<NearUser>> getFriends(String uid) async {
     try {
       // Fetch requests where the current user is the requester
       var req1Snapshot = await firestore
         .collection('requests')
-        .where('uid', isEqualTo: authUser.uid)
+        .where('uid', isEqualTo: uid)
         .where('status', isEqualTo: 'accepted')
         .get();
       List<QueryDocumentSnapshot> req1Docs = req1Snapshot.docs;
@@ -39,7 +40,7 @@ class FirestoreService {
       // Fetch requests where the current user is the recipient
       var req2Snapshot = await firestore
         .collection('requests')
-        .where('fuid', isEqualTo: authUser.uid)
+        .where('fuid', isEqualTo: uid)
         .where('status', isEqualTo: 'accepted')
         .get();
       List<QueryDocumentSnapshot> req2Docs = req2Snapshot.docs;
@@ -67,11 +68,11 @@ class FirestoreService {
     }
   }
 
-  Future<List<NearUser>> getUsersRequested() async {
+  Future<List<NearUser>> getUsersRequested(String uid) async {
     try {
       var querySnapshot = await firestore
         .collection('requests')
-        .where('fuid', isEqualTo: authUser.uid)
+        .where('fuid', isEqualTo: uid)
         .where('status', isEqualTo: 'pending')
         .get();
 
@@ -91,24 +92,24 @@ class FirestoreService {
     }
   }
 
-  Future<void> sendRequest(String username) async {
+  Future<void> sendRequest(String uid, String username) async {
     try{
       String? fuid = await getUID(username);
       if (fuid != null) {
-        bool? reqEx1 = await requestExists(authUser.uid, fuid);
+        bool? reqEx1 = await requestExists(uid, fuid);
         if (reqEx1 != null && !reqEx1){
-          bool? reqEx2 = await requestExists(fuid, authUser.uid);
+          bool? reqEx2 = await requestExists(fuid, uid);
           if (reqEx2 != null && !reqEx2){
             QuerySnapshot requestsSnapshot = await firestore
               .collection('requests')
-              .where('uid', isEqualTo: authUser.uid) 
+              .where('uid', isEqualTo: uid) 
               .where('fuid', isEqualTo: fuid)
               .get();
 
             if (requestsSnapshot.docs.isEmpty) {
               DocumentReference requestDocRef = firestore.collection('requests').doc();
               await requestDocRef.set({
-                'uid': authUser.uid,
+                'uid': uid,
                 'fuid': fuid,
                 'status': 'pending'
               }, SetOptions(merge: true));
@@ -190,56 +191,44 @@ class FirestoreService {
     }
   }
 
-  Future<void> setLocation(double lon, double lat) async {
+  Future<void> setLocation(String uid, double lon, double lat) async {
     try{
-      DocumentReference userDocRef = firestore.collection('users').doc(authUser.uid);
+      DocumentReference userDocRef = firestore.collection('users').doc(uid);
       await userDocRef.set({
         'location': GeoPoint(lat, lon),
         'updated' : FieldValue.serverTimestamp()
       }, SetOptions(merge: true));
-      globals.user!.location = GeoPoint(lat, lon);
     }catch(e){
       debugPrint('Error setLocation: $e');
     }
   }
 
-  Future<void> setUsername(String username) async {
+  Future<void> setUser(String uid, String username, String k) async {
     try{
-      DocumentReference userDocRef = firestore.collection('users').doc(authUser.uid);
-      String? someUid = await getUID(username);
-      if (someUid == null){
-        await userDocRef.set({
-          'username': username
-        }, SetOptions(merge: true));
-      }
-    }catch(e){
-      debugPrint('Error setUsername: $e');
-    }
-  }
-
-  Future<void> setKAnonymity(String k) async {
-    try{
-      DocumentReference userDocRef = firestore.collection('users').doc(authUser.uid);
+      DocumentReference userDocRef = firestore.collection('users').doc(uid);
       await userDocRef.set({
-          'kAnonymity': k
-        }, SetOptions(merge: true));
+        'username': username,
+        'kAnonymity': k
+      }, SetOptions(merge: true));
     }catch(e){
-      debugPrint('Error setUsername: $e');
+      debugPrint('Error setUser: $e');
     }
   }
 
-  Future<void> setProfilePicture(String path) async {
+
+
+  Future<void> setProfilePicture(String uid, String path) async {
     try{
       String url = '';
       FirebaseStorage storage = FirebaseStorage.instance;
 
-      Reference ref = storage.ref().child("${authUser.uid}/profile/${DateTime.now()}");
+      Reference ref = storage.ref().child("$uid/profile/${DateTime.now()}");
       UploadTask uploadTask = ref.putFile(File(path));
 
       final snapshot = await uploadTask.whenComplete(() {});
       url = await snapshot.ref.getDownloadURL();
 
-      DocumentReference userDocRef = firestore.collection('users').doc(authUser.uid);
+      DocumentReference userDocRef = firestore.collection('users').doc(uid);
       if (url.isNotEmpty){
         await userDocRef.set({
           'image': url
@@ -250,52 +239,11 @@ class FirestoreService {
     }
   }
 
-  Future<NearUser?> initializeUser() async {
-    try{
-      if (globals.user == null){
-        DocumentReference userDocRef = firestore.collection('users').doc(authUser.uid);
-        DocumentSnapshot userDoc = await userDocRef.get();
-        if (!userDoc.exists){
-          String? username = authUser.displayName?.replaceAll(' ', '').toLowerCase();
-          username ??= authUser.email!.substring(0, authUser.email!.indexOf('@'));
-          
-          if (username.length > 8) {
-            username = username.substring(0, 8);
-          }
-          
-          int counter = 1;
-          while (await getUID(username!) != null) {
-            username = '$username$counter';
-            counter++;
-          }
-
-          await userDocRef.set({
-            'username': username,
-            'email': authUser.email,
-            'joined' : FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-        }
-
-        await FirestoreService().getUser(authUser.uid);
-        globals.deviceLocation = await LocationService().getCurrentPosition();
-      }
-    }catch(e){
-      debugPrint('Error initializeUser: $e');
-    }
-    return globals.user;
-  }
-
-  void signOut() async {
-    globals.user = null;
-    FirebaseAuth.instance.signOut();
-  }
-
-  void deleteAccount() async {
-
+  Future<void> deleteAccount(String uid) async {
     // Delete user requests
     QuerySnapshot requestsSnapshot = await firestore
       .collection('requests')
-      .where('uid', isEqualTo: authUser.uid)
+      .where('uid', isEqualTo: uid)
       .get();
 
     for (var doc in requestsSnapshot.docs) {
@@ -304,16 +252,14 @@ class FirestoreService {
 
     requestsSnapshot = await firestore
       .collection('requests')
-      .where('fuid', isEqualTo: authUser.uid)
+      .where('fuid', isEqualTo: uid)
       .get();
 
     for (var doc in requestsSnapshot.docs) {
       await doc.reference.delete();
     }
 
-    DocumentReference userDocRef = firestore.collection('users').doc(authUser.uid);
+    DocumentReference userDocRef = firestore.collection('users').doc(uid);
     await userDocRef.delete();
-
-    signOut();
   }
 }

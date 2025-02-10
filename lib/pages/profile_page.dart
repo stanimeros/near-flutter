@@ -1,18 +1,16 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_near/common/firestore_service.dart';
+import 'package:flutter_near/services/firestore.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:flutter_near/widgets/pick_profile_picture.dart';
 import 'package:flutter_near/widgets/popup.dart';
-import 'package:flutter_near/common/globals.dart' as globals;
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:provider/provider.dart';
+import 'package:flutter_near/services/user_provider.dart';
 
 class ProfilePage extends StatefulWidget {
-  final authUser = FirebaseAuth.instance.currentUser;
-
-  ProfilePage({super.key});
+  const ProfilePage({super.key});
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -25,13 +23,76 @@ class _ProfilePageState extends State<ProfilePage> {
   bool hasChanges = false;
   bool isLoading = false;
   bool uInvalid = false;
-  bool kInvalid = false;
   FocusNode uFocusNode = FocusNode();
-  FocusNode kFocusNode = FocusNode();
   TextEditingController uController = TextEditingController();
-  TextEditingController kController = TextEditingController();
   TextEditingController eController = TextEditingController();
-  TextEditingController jController = TextEditingController();
+  double kValue = 2; // Default k-anonymity value
+
+  @override
+  void initState() {
+    super.initState();
+    final userProvider = context.read<UserProvider>();
+    final nearUser = userProvider.nearUser;
+    
+    uController = TextEditingController(text: nearUser?.username);
+    eController = TextEditingController(text: nearUser?.email);
+    kValue = (nearUser?.kAnonymity ?? 2).toDouble();
+  }
+
+  Future<void> saveChanges() async {
+    final userProvider = context.read<UserProvider>();
+    final nearUser = userProvider.nearUser;
+    if (nearUser == null) return;
+
+    String newUsername = uController.text
+      .trim().toLowerCase().replaceAll(' ', '');
+
+    if (!uInvalid) {
+      setState(() {
+        isLoading = true;
+      });
+
+      try {
+        // Update user data in Firestore
+        await FirestoreService().setUser(nearUser.uid, newUsername, kValue.round().toString());
+
+        // Update profile picture if changed
+        if (newProfilePicture != null) {
+          await FirestoreService().setProfilePicture(nearUser.uid, newProfilePicture!.path);
+        }
+
+        // Get updated user data
+        final updatedUser = await FirestoreService().getUser(nearUser.uid);
+        if (updatedUser != null) {
+          // Update the provider without notifying listeners
+          userProvider.updateUserSilently(updatedUser);
+        }
+
+        if (mounted) {
+          setState(() {
+            isLoading = false;
+            hasChanges = false;
+          });
+        }
+      } catch (e) {
+        debugPrint('Error saving changes: $e');
+        if (mounted) {
+          setState(() {
+            isLoading = false;
+          });
+        }
+      }
+    }
+  }
+
+  String? uError(String value) {
+    if (value.length < 4) {
+      return "Username should contain at least 4 characters";
+    } else if (value.length > 10) {
+      return "Username should not contain more than 10 characters";
+    }
+    return null;
+  }
 
   Future<XFile?> pickImage() async {
     final XFile? selectedImage = await picker.pickImage(
@@ -48,69 +109,19 @@ class _ProfilePageState extends State<ProfilePage> {
     return newProfilePicture;
   }
 
-  Future<void> saveChanges() async{
-    String newUsername = uController.text
-      .trim().toLowerCase().replaceAll(' ', '');
-
-    if (!uInvalid && !kInvalid){
-      setState(() {
-        isLoading = true;
-      });
-
-      if (globals.user!.kAnonymity.toString() != kController.text){
-        await FirestoreService().setKAnonymity(kController.text);
-      }
-
-      if (globals.user!.username != newUsername){
-        await FirestoreService().setUsername(newUsername);
-      }
-
-      if (newProfilePicture != null){
-        await FirestoreService().setProfilePicture(newProfilePicture!.path);
-      }
-
-      await FirestoreService().getUser(widget.authUser!.uid);
-
-      setState(() {
-        isLoading = false;
-        hasChanges = false;
-      });
-    }
-  }
-
-  String? uError(String value) {
-    if (value.length < 4){
-      return "Username should contain at least 4 characters";
-    }else if (value.length > 10){
-      return "Username should not contain more than 10 characters";
-    }
-
-    return null;
-  }
-
-  String? kError(String value) {
-    if (value.isEmpty || int.parse(value) == 0){
-      return "k Anonymity must be greater than 0";
-    }
-
-    return null;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    if (globals.user!.joined != null){
-      String dateJoined = 
-        '${globals.user!.joined!.day.toString().padLeft(2,'0')}/${globals.user!.joined!.month.toString().padLeft(2,'0')}/${globals.user!.joined!.year}';
-      jController = TextEditingController(text: dateJoined);
-    }
-    uController = TextEditingController(text: globals.user!.username);
-    kController = TextEditingController(text: globals.user!.kAnonymity.toString());
-    eController = TextEditingController(text: globals.user!.email);
-  }
-
   @override
   Widget build(BuildContext context) {
+    final userProvider = context.watch<UserProvider>();
+    
+    if (userProvider.isLoading) {
+      return const CustomLoader();
+    }
+
+    final nearUser = userProvider.nearUser;
+    if (nearUser == null) {
+      return const Text('No user data');
+    }
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -118,15 +129,15 @@ class _ProfilePageState extends State<ProfilePage> {
           Row(
             children: [
               PickProfilePicture(
-                user: globals.user!,
+                user: nearUser,
                 pickImage: pickImage,
                 size: 55,
-                color: globals.textColor, 
-                backgroundColor: globals.cachedImageColor
+                color: Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black,
+                backgroundColor: Theme.of(context).colorScheme.surface
               ),
               const SizedBox(width: 12),
               Text(
-                globals.user!.username,
+                nearUser.username,
                 style: const TextStyle(
                   fontSize: 20
                 ),
@@ -178,37 +189,6 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           const SizedBox(height: 20),
           TextField(
-            focusNode: kFocusNode,
-            controller: kController,
-            keyboardType: TextInputType.number,
-            inputFormatters: <TextInputFormatter>[
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(2), 
-            ],
-            onEditingComplete: () {
-              setState(() {
-                kInvalid = kError(kController.text) != null;
-              });
-              kFocusNode.unfocus();
-            },
-            onTapOutside: (event) {
-              setState(() {
-                kInvalid = kError(kController.text) != null;
-              });
-              kFocusNode.unfocus();
-            },
-            onChanged: (value) {
-              setState(() {
-                hasChanges = true;
-              });
-            },
-            decoration: InputDecoration(
-              labelText: 'k Anonymity',
-              errorText: kInvalid ? kError(kController.text) : null,
-            ),
-          ),
-          const SizedBox(height: 20),
-          TextField(
             readOnly: true,
             enableInteractiveSelection: false,
             controller: eController,
@@ -217,13 +197,27 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ),
           const SizedBox(height: 20),
-          TextField(
-            readOnly: true,
-            enableInteractiveSelection: false,
-            controller: jController,
-            decoration: const InputDecoration(
-              labelText: 'Joined',
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'k-Anonymity: ${kValue.round()}',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              Slider(
+                value: kValue,
+                min: 2,
+                max: 20,
+                divisions: 18,
+                label: kValue.round().toString(),
+                onChanged: (value) {
+                  setState(() {
+                    kValue = value;
+                    hasChanges = true;
+                  });
+                },
+              ),
+            ],
           ),
           const Spacer(),
           ElevatedButton(
@@ -231,31 +225,23 @@ class _ProfilePageState extends State<ProfilePage> {
               AlertDialog popUp = PopUp(
                 funBtn1: () {
                   Navigator.pop(context);
-                  FirestoreService().signOut();
+                  FirebaseAuth.instance.signOut();
                 },
                 funBtn2: () {
                   Navigator.pop(context);
                 },
               );
-          
               showDialog(
-                context: context, 
-                builder: (BuildContext context) {
-                  return popUp;
-                }
+                context: context,
+                builder: (BuildContext context) => popUp,
               );
             },
             child: const Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  'Sign out',
-                ),
+                Text('Sign out'),
                 SizedBox(width: 8),
-                Icon(
-                  size: 18,
-                  LucideIcons.logOut
-                )
+                Icon(LucideIcons.logOut, size: 18)
               ],
             ),
           ),
@@ -263,36 +249,29 @@ class _ProfilePageState extends State<ProfilePage> {
           ElevatedButton(
             onPressed: () async {
               AlertDialog popUp = PopUp(
-                funBtn1: () {
+                funBtn1: () async{
                   Navigator.pop(context);
-                  FirestoreService().deleteAccount();
+                  await FirestoreService().deleteAccount(nearUser.uid);
+                  FirebaseAuth.instance.signOut();
                 },
                 funBtn2: () {
                   Navigator.pop(context);
                 },
               );
-          
               showDialog(
-                context: context, 
-                builder: (BuildContext context) {
-                  return popUp;
-                }
+                context: context,
+                builder: (BuildContext context) => popUp,
               );
             },
             child: const Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  'Delete your data',
-                ),
+                Text('Delete your data'),
                 SizedBox(width: 8),
-                Icon(
-                  size: 18,
-                  LucideIcons.trash
-                )
+                Icon(LucideIcons.trash, size: 18)
               ],
             ),
-          )
+          ),
         ],
       ),
     );

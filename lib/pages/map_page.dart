@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:dart_jts/dart_jts.dart' as jts;
-import 'package:flutter_near/common/db_helper.dart';
-import 'package:flutter_near/common/location_service.dart';
+import 'package:flutter_near/services/db_helper.dart';
+import 'package:flutter_near/services/location.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 

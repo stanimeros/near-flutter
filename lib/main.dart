@@ -1,11 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_near/bars/bottom_nav_bar.dart';
-import 'package:flutter_near/common/custom_theme.dart';
-import 'package:flutter_near/common/firestore_service.dart';
-import 'package:flutter_near/common/db_helper.dart';
-import 'package:flutter_near/common/near_user.dart';
+import 'package:flutter_near/widgets/bottom_nav_bar.dart';
+import 'package:flutter_near/widgets/custom_theme.dart';
+import 'package:flutter_near/services/db_helper.dart';
 import 'package:flutter_near/firebase_options.dart';
 import 'package:flutter_near/pages/feed_page.dart';
 import 'package:flutter_near/pages/friends_page.dart';
@@ -14,13 +12,16 @@ import 'package:flutter_near/pages/profile_page.dart';
 import 'package:flutter_near/pages/requests_page.dart';
 import 'package:flutter_near/pages/map_page.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
-import 'package:flutter_near/widgets/messenger.dart';
+import 'package:provider/provider.dart';
+import 'package:flutter_near/services/user_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await DbHelper().initializeDb();
+
   await DbHelper().createSpatialTable(DbHelper.pois);
   await DbHelper().createSpatialTable(DbHelper.keys);
+
   // DbHelper().deleteDb();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
@@ -49,48 +50,52 @@ class _MainAppState extends State<MainApp> {
       debugShowCheckedModeBanner: false,
       theme: CustomTheme.themeData,
       home: StreamBuilder(
-        stream: FirebaseAuth.instance.authStateChanges(), 
+        stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
-          if (snapshot.hasData){
-            return FutureBuilder(
-              future: FirestoreService().initializeUser(),
-              builder: (context, snapshot) {
-                if (snapshot.hasData){
-                  NearUser? user = snapshot.data;
-                  if (user != null){
-                    return Scaffold(
-                      resizeToAvoidBottomInset: false,
-                      extendBodyBehindAppBar: false,
-                      bottomNavigationBar: BottomNavBar(changePage: changePage),
-                      body: SafeArea(
-                        child: PageView(
-                          physics: const NeverScrollableScrollPhysics(),
-                          controller: pageController,
-                          children: [
-                            const FeedPage(),
-                            const FriendsPage(),
-                            const MapPage(),
-                            const RequestsPage(),
-                            ProfilePage()
-                          ],
-                        ),
-                      )
+          if (snapshot.hasData) {
+            return ChangeNotifierProvider(
+              create: (_) => UserProvider()..loadNearUser(),
+              child: Consumer<UserProvider>(
+                builder: (context, userProvider, _) {
+                  if (userProvider.isLoading) {
+                    return const Scaffold(
+                      body: CustomLoader(),
                     );
                   }
-                  return const Scaffold(
-                    body: Messenger(message: 'Error: User not found')
+
+                  if (userProvider.nearUser == null) {
+                    FirebaseAuth.instance.signOut();
+                    return const Scaffold(
+                      body: CustomLoader(),
+                    );
+                  }
+
+                  return Scaffold(
+                    resizeToAvoidBottomInset: false,
+                    extendBodyBehindAppBar: false,
+                    bottomNavigationBar: BottomNavBar(changePage: changePage),
+                    body: SafeArea(
+                      child: PageView(
+                        physics: const NeverScrollableScrollPhysics(),
+                        controller: pageController,
+                        children: [
+                          const FeedPage(),
+                          const FriendsPage(),
+                          const MapPage(),
+                          const RequestsPage(),
+                          const ProfilePage(),
+                        ],
+                      ),
+                    ),
                   );
-                }
-                return const Scaffold(
-                  body: CustomLoader()
-                );
-              }
+                },
+              ),
             );
-          }else{
+          } else {
             return const LoginPage();
           }
-        }
-      )
+        },
+      ),
     );
   }
 

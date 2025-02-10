@@ -28,8 +28,8 @@ class NearUser{
     Map data = doc.data() as Map;
     return NearUser(
       uid: doc.id,
-      username: data['username'] ?? '',
-      email: data['email'] ?? '',
+      username: data['username'] ?? 'username',
+      email: data['email'] ?? 'email@email.com',
       joined: data['joined']?.toDate(),
       location: data['location'],
       updated: data['updated']?.toDate(),
