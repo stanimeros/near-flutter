@@ -8,10 +8,11 @@ import 'package:flutter_near/services/near_user.dart';
 class FirestoreService {
   FirebaseFirestore firestore = FirebaseFirestore.instance;
 
-  Future<void> createUser(String uid, String email) async {
+  Future<void> createUser(String uid, String email, String username) async {
     await firestore.collection('users').doc(uid).set({
       'uid': uid,
       'email': email,
+      'username': username,
       'joined': FieldValue.serverTimestamp(),
     });
   }

@@ -16,11 +16,15 @@ class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  final _usernameController = TextEditingController();
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    _usernameController.dispose();
     super.dispose();
   }
 
@@ -31,14 +35,20 @@ class _LoginPageState extends State<LoginPage> {
       isLoading = true;
     });
 
+    // Trim whitespace from email
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    final username = _usernameController.text.trim();
+
     final success = isRegistering
         ? await AuthService().registerWithEmailPassword(
-            _emailController.text,
-            _passwordController.text,
+            email,
+            password,
+            username,
           )
         : await AuthService().signInWithEmailPassword(
-            _emailController.text,
-            _passwordController.text,
+            email,
+            password,
           );
 
     if (!success) {
@@ -53,16 +63,26 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height - MediaQuery.of(context).padding.top,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: MediaQuery.of(context).size.height - 
+                        MediaQuery.of(context).padding.top - 
+                        MediaQuery.of(context).padding.bottom,
+            ),
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   TextButton(
                     onPressed: () {
                       setState(() {
                         isRegistering = !isRegistering;
+                        _formKey.currentState?.reset();
+                        _emailController.clear();
+                        _passwordController.clear();
+                        _confirmPasswordController.clear();
+                        _usernameController.clear();
                       });
                     },
                     child: Text(
@@ -71,66 +91,105 @@ class _LoginPageState extends State<LoginPage> {
                           : 'Need an account? Register',
                     ),
                   ),
-                  const Spacer(),
                   const Text(
                     'Near',
                     style: TextStyle(fontSize: 36, letterSpacing: 4),
                   ),
-                  const Spacer(),
-                  SizedBox(
-                    height: 400,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Visibility(
-                          visible: isLoading,
-                          child: const CustomLoader(),
-                        ),
-                        Visibility(
-                          visible: !isLoading,
+                  Column(
+                    children: [
+                      Visibility(
+                        visible: isLoading,
+                        child: const CustomLoader(),
+                      ),
+                      Visibility(
+                        visible: !isLoading,
+                        child: Form(
+                          key: _formKey,
                           child: Column(
                             children: [
-                              Form(
-                                key: _formKey,
-                                child: Column(
+                              if (isRegistering) ...[
+                                TextFormField(
+                                  controller: _usernameController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Username',
+                                  ),
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please enter a username';
+                                    }
+                                    if (value.length < 4) {
+                                      return 'Username must be at least 4 characters';
+                                    }
+                                    if (value.length > 10) {
+                                      return 'Username must be less than 10 characters';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 16),
+                              ],
+                              TextFormField(
+                                controller: _emailController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Email',
+                                ),
+                                keyboardType: TextInputType.emailAddress,
+                                autocorrect: false,
+                                validator: (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'Please enter your email';
+                                  }
+                                  final emailRegExp = RegExp(r'^[^@]+@[^@]+\.[^@]+$');
+                                  if (!emailRegExp.hasMatch(value.trim())) {
+                                    return 'Please enter a valid email';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 16),
+                              TextFormField(
+                                controller: _passwordController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Password',
+                                ),
+                                obscureText: true,
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Please enter your password';
+                                  }
+                                  if (value.length < 6) {
+                                    return 'Password must be at least 6 characters';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              if (isRegistering) ...[
+                                const SizedBox(height: 16),
+                                TextFormField(
+                                  controller: _confirmPasswordController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Confirm Password',
+                                  ),
+                                  obscureText: true,
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please confirm your password';
+                                    }
+                                    if (value != _passwordController.text) {
+                                      return 'Passwords do not match';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ],
+                              const SizedBox(height: 24),
+                              ElevatedButton(
+                                onPressed: _handleEmailPasswordAuth,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    TextFormField(
-                                      controller: _emailController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Email',
-                                      ),
-                                      validator: (value) {
-                                        if (value == null || value.isEmpty) {
-                                          return 'Please enter your email';
-                                        }
-                                        return null;
-                                      },
-                                    ),
-                                    const SizedBox(height: 16),
-                                    TextFormField(
-                                      controller: _passwordController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Password',
-                                      ),
-                                      obscureText: true,
-                                      validator: (value) {
-                                        if (value == null || value.isEmpty) {
-                                          return 'Please enter your password';
-                                        }
-                                        return null;
-                                      },
-                                    ),
-                                    const SizedBox(height: 24),
-                                    ElevatedButton(
-                                      onPressed: _handleEmailPasswordAuth,
-                                      child: Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          Text(
-                                            isRegistering ? 'Register' : 'Sign In',
-                                          ),
-                                        ],
-                                      ),
+                                    Text(
+                                      isRegistering ? 'Register' : 'Sign In',
                                     ),
                                   ],
                                 ),
@@ -138,8 +197,8 @@ class _LoginPageState extends State<LoginPage> {
                             ],
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ],
               ),
