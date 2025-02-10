@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_near/common/auth_service.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
-import 'package:lucide_icons/lucide_icons.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -130,33 +129,6 @@ class _LoginPageState extends State<LoginPage> {
                                           Text(
                                             isRegistering ? 'Register' : 'Sign In',
                                           ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    const Text('Or'),
-                                    const SizedBox(height: 16),
-                                    ElevatedButton(
-                                      onPressed: () async {
-                                        setState(() {
-                                          isLoading = true;
-                                        });
-                                        
-                                        if (!await AuthService()
-                                            .signInWithGoogle()) {
-                                          setState(() {
-                                            isLoading = false;
-                                          });
-                                        }
-                                      },
-                                      child: const Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          Text(
-                                            'Sign in with Google',
-                                          ),
-                                          SizedBox(width: 8),
-                                          Icon(size: 18, LucideIcons.logIn)
                                         ],
                                       ),
                                     ),
