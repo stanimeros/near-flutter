@@ -92,95 +92,92 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   }
 
   Future<void> _updateCellsVisualization() async {
-    debugPrint('=== Starting cell visualization update ===');
-    final startTime = DateTime.now();
-
     if (!isMapCreated || _mapController == null) return;
 
     try {
-      final boundsStart = DateTime.now();
+      // Get current center for 50m box
       LatLngBounds bounds = await _mapController!.getVisibleRegion();
-      debugPrint('Got bounds in ${DateTime.now().difference(boundsStart).inMilliseconds}ms');
+      LatLng center = LatLng(
+        (bounds.northeast.latitude + bounds.southwest.latitude) / 2,
+        (bounds.northeast.longitude + bounds.southwest.longitude) / 2
+      );
+      
+      // Calculate 50m box
+      double latOffset = targetRadiusMeters / metersPerDegree;
+      double lonOffset = targetRadiusMeters / (metersPerDegree * cos(center.latitude * pi / 180));
 
-      jts.Envelope boundingBox = jts.Envelope(
-        bounds.southwest.longitude,
-        bounds.northeast.longitude, 
-        bounds.southwest.latitude,
-        bounds.northeast.latitude
+      // Create 50m bounding box
+      jts.Envelope searchBox = jts.Envelope(
+        center.longitude - lonOffset,
+        center.longitude + lonOffset,
+        center.latitude - latOffset,
+        center.latitude + latOffset,
       );
 
-      final cellsStart = DateTime.now();
-      final downloadedCells = DbHelper.db.getGeometriesIn(DbHelper.cells, envelope: boundingBox);
-      debugPrint('Got cells in ${DateTime.now().difference(cellsStart).inMilliseconds}ms');
+      debugPrint('Getting cells from DB...');
+      // Get cells from DB directly using SQL for better performance
+      final downloadedCells = DbHelper.db.select(
+        'SELECT cell_x, cell_y FROM ${DbHelper.cells.fixedName}'
+      );
+      
+      debugPrint('Getting points in search box...');
+      // Get points in search box for green cells
+      List<jts.Point> pointsInBox = await DbHelper().getPointsInBoundingBox(searchBox);
+      final greenCellKeys = pointsInBox.map((point) => 
+        '${(point.getX() / DbHelper.gridSize).floor()},${(point.getY() / DbHelper.gridSize).floor()}'
+      ).toSet();
 
-      final drawStart = DateTime.now();
+      debugPrint('Updating visualization...');
       setState(() {
         _polygons.clear();
 
-        // Add current view area polygon
+        // 1. Add all downloaded cells (blue)
+        downloadedCells.forEach((row) {
+          final x = row.get('cell_x') as int;
+          final y = row.get('cell_y') as int;
+          
+          double minLon = x * DbHelper.gridSize;
+          double maxLon = (x + 1) * DbHelper.gridSize;
+          double minLat = y * DbHelper.gridSize;
+          double maxLat = (y + 1) * DbHelper.gridSize;
+
+          // Check if this cell should be green (in search box) or blue (just downloaded)
+          final isInSearchBox = greenCellKeys.contains('$x,$y');
+          
+          _polygons.add(
+            Polygon(
+              polygonId: PolygonId('cell_${x}_$y'),
+              points: [
+                LatLng(maxLat, maxLon),
+                LatLng(maxLat, minLon),
+                LatLng(minLat, minLon),
+                LatLng(minLat, maxLon),
+              ],
+              strokeWidth: 1,
+              strokeColor: isInSearchBox ? Colors.green : Colors.blue,
+              fillColor: isInSearchBox ? 
+                Colors.green.withAlpha(32) : 
+                Colors.blue.withAlpha(32),
+            ),
+          );
+        });
+
+        // 2. Show the 50m search box outline in red
         _polygons.add(
           Polygon(
-            polygonId: const PolygonId('currentArea'),
+            polygonId: const PolygonId('searchArea'),
             points: [
-              bounds.northeast,
-              LatLng(bounds.northeast.latitude, bounds.southwest.longitude),
-              bounds.southwest,
-              LatLng(bounds.southwest.latitude, bounds.northeast.longitude),
+              LatLng(center.latitude + latOffset, center.longitude + lonOffset),
+              LatLng(center.latitude + latOffset, center.longitude - lonOffset),
+              LatLng(center.latitude - latOffset, center.longitude - lonOffset),
+              LatLng(center.latitude - latOffset, center.longitude + lonOffset),
             ],
             strokeWidth: 2,
             strokeColor: Colors.red,
-            fillColor: Colors.red.withAlpha(32),
+            fillColor: Colors.transparent,
           ),
         );
-
-        // Convert bounds to grid coordinates
-        int minX = (bounds.southwest.longitude / DbHelper.gridSize).floor();
-        int maxX = (bounds.northeast.longitude / DbHelper.gridSize).floor();
-        int minY = (bounds.southwest.latitude / DbHelper.gridSize).floor();
-        int maxY = (bounds.northeast.latitude / DbHelper.gridSize).floor();
-
-        // Add cell polygons
-        for (int x = minX; x <= maxX; x++) {
-          for (int y = minY; y <= maxY; y++) {
-            bool isDownloaded = false;
-            for (var geom in downloadedCells) {
-              if (geom != null) {
-                jts.Point point = geom as jts.Point;
-                if (point.getX() == x && point.getY() == y) {
-                  isDownloaded = true;
-                  break;
-                }
-              }
-            }
-            
-            // Calculate cell corners
-            double minLon = x * DbHelper.gridSize;
-            double maxLon = (x + 1) * DbHelper.gridSize;
-            double minLat = y * DbHelper.gridSize;
-            double maxLat = (y + 1) * DbHelper.gridSize;
-
-            _polygons.add(
-              Polygon(
-                polygonId: PolygonId('cell_${x}_$y'),
-                points: [
-                  LatLng(maxLat, maxLon), // NE
-                  LatLng(maxLat, minLon), // NW
-                  LatLng(minLat, minLon), // SW
-                  LatLng(minLat, maxLon), // SE
-                ],
-                strokeWidth: 1,
-                strokeColor: isDownloaded ? Colors.blue : Colors.grey,
-                fillColor: isDownloaded ? 
-                  Colors.blue.withAlpha(32) : 
-                  Colors.grey.withAlpha(16),
-              ),
-            );
-          }
-        }
       });
-      debugPrint('Drew cells in ${DateTime.now().difference(drawStart).inMilliseconds}ms');
-      
-      debugPrint('=== Finished visualization in ${DateTime.now().difference(startTime).inMilliseconds}ms ===');
     } catch (e) {
       debugPrint('Error updating cells visualization: $e');
     }
@@ -210,11 +207,10 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     setState(() {
       isLoadingPOIs = true;
       _markers = {};
-      _polygons = {};
     });
 
     try {
-      // Get current center instead of bounds
+      // Get current center and bounds
       LatLngBounds bounds = await _mapController!.getVisibleRegion();
       LatLng center = LatLng(
         (bounds.northeast.latitude + bounds.southwest.latitude) / 2,
@@ -235,10 +231,10 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         center.longitude - lonOffset
       );
       
-      // Show current area in red
+      // Show ONLY the 50m box in red
       _polygons.add(
         Polygon(
-          polygonId: const PolygonId('currentArea'),
+          polygonId: const PolygonId('searchArea'),
           points: [
             northeast,
             LatLng(northeast.latitude, southwest.longitude),
@@ -317,22 +313,14 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         );
       }
 
-      if (mounted) {
-        setState(() {
-          _markers = _markers;
-          _polygons = _polygons;
-          isLoadingPOIs = false;
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text("${filteredPoints.length} POIs displayed"),
-          duration: const Duration(seconds: 2),
-        ));
-      }
+      // Update visualization after loading POIs
+      await _updateCellsVisualization();
+      
     } catch (e) {
+      debugPrint('Error loading POIs: $e');
+    } finally {
       if (mounted) {
         setState(() {
-          errorMessage = e.toString();
           isLoadingPOIs = false;
         });
       }
