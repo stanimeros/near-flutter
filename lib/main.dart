@@ -18,9 +18,9 @@ import 'package:flutter_near/services/user_provider.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await DbHelper().openDbFile();
-  await DbHelper().createSpatialTable(DbHelper.pois);
-
-  // DbHelper().deleteDb();
+  await DbHelper().createCellsTable();
+  await DbHelper().createSpatialTable();
+  
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );

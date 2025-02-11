@@ -4,7 +4,7 @@ import 'package:dart_jts/dart_jts.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_geopackage/flutter_geopackage.dart';
 import 'package:dart_hydrologis_db/dart_hydrologis_db.dart';
-import 'package:flutter_near/services/osm_service.dart';
+import 'package:flutter_near/services/osm_helper.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:dart_hydrologis_utils/dart_hydrologis_utils.dart';
 
@@ -60,11 +60,11 @@ class DbHelper {
     }
   }
 
-  Future<void> createSpatialTable(TableName table) async {
+  Future<void> createSpatialTable() async {
     try {
-      if (!db.hasTable(table)){
+      if (!db.hasTable(pois)){
         db.createSpatialTable(
-          table,
+          pois,
           4326,
           "geopoint POINT UNIQUE",
           ["id INTEGER PRIMARY KEY AUTOINCREMENT"],
@@ -73,6 +73,26 @@ class DbHelper {
         );
 
         debugPrint('Spatial table created');
+      }
+    } catch (e) {
+      debugPrint(e.toString());
+    }
+  }
+
+  Future<void> createCellsTable() async {
+    try {
+      if (!db.hasTable(cells)) {
+        db.execute('''
+          CREATE TABLE IF NOT EXISTS ${cells.fixedName} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cell_x INTEGER NOT NULL,
+            cell_y INTEGER NOT NULL,
+            downloaded_at INTEGER NOT NULL,
+            UNIQUE(cell_x, cell_y)
+          )
+        ''');
+
+        debugPrint('Cells table created');
       }
     } catch (e) {
       debugPrint(e.toString());
@@ -103,18 +123,18 @@ class DbHelper {
   }
 
   // Function to add a point to the database
-  Future<void> addPointToDb(double lon, double lat, TableName table) async{
+  Future<void> addPointToDb(double lon, double lat) async{
     GeometryFactory gf = GeometryFactory.defaultPrecision();
     Point point = gf.createPoint(Coordinate(lon, lat));
     List<int> geomBytes = GeoPkgGeomWriter().write(point);
 
-    String sql = "INSERT OR IGNORE INTO ${table.fixedName} (geopoint) VALUES (?);";
+    String sql = "INSERT OR IGNORE INTO ${pois.fixedName} (geopoint) VALUES (?);";
     db.execute(sql, arguments: [geomBytes]);
   }
 
   // Function to get points within a bounding box
   Future<List<Point>> getPointsInBoundingBox(Envelope boundingBox) async {
-    await OSMService().ensurePointsInArea(boundingBox);
+    await OSMHelper().ensurePointsInArea(boundingBox);
 
     List<Point> list = [];
     DateTime before = DateTime.now();

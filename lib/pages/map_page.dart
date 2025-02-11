@@ -151,19 +151,28 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
       // Add downloaded cells in blue
       var result = DbHelper.db.select('''
-        SELECT min_lon, max_lon, min_lat, max_lat 
+        SELECT cell_x, cell_y 
         FROM ${DbHelper.cells.fixedName}
       ''');
 
+      const gridSize = 0.002;  // 0.002 degrees per cell
       result.forEach((row) {
+        int x = row.get('cell_x');
+        int y = row.get('cell_y');
+        
+        double minLon = x * gridSize;
+        double maxLon = (x + 1) * gridSize;
+        double minLat = y * gridSize;
+        double maxLat = (y + 1) * gridSize;
+
         _polygons.add(
           Polygon(
-            polygonId: PolygonId('cell_${row.get('min_lon')}_${row.get('min_lat')}'),
+            polygonId: PolygonId('cell_${x}_$y'),
             points: [
-              LatLng(row.get('max_lat'), row.get('max_lon')),
-              LatLng(row.get('max_lat'), row.get('min_lon')),
-              LatLng(row.get('min_lat'), row.get('min_lon')),
-              LatLng(row.get('min_lat'), row.get('max_lon')),
+              LatLng(maxLat, maxLon),  // NE
+              LatLng(maxLat, minLon),  // NW
+              LatLng(minLat, minLon),  // SW
+              LatLng(minLat, maxLon),  // SE
             ],
             strokeWidth: 1,
             strokeColor: Colors.blue,
