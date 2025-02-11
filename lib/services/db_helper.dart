@@ -5,19 +5,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_geopackage/flutter_geopackage.dart';
 import 'package:dart_hydrologis_db/dart_hydrologis_db.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:dart_hydrologis_utils/dart_hydrologis_utils.dart';
 import 'package:xml/xml.dart';
 import 'package:http/http.dart' as http;
 
 class DbHelper {
   static late GeopackageDb db;
+  static const double gridSize = 0.0025;
   static String dbFilename = 'points.gpkg';
   static TableName pois = TableName("pois", schemaSupported: false);
   static TableName cells = TableName("cells", schemaSupported: false);
-
-  bool _isDownloading = false;
-  static const double gridSize = 0.0025;
-
+  
   // Function to initialize the database
   Future<void> openDbFile() async {
     try {
@@ -25,17 +22,6 @@ class DbHelper {
       Directory directory = await getApplicationDocumentsDirectory();
       String dbPath = '${directory.path}/$dbFilename';
       db = ch.open(dbPath);
-      db.openOrCreate();
-      db.forceRasterMobileCompatibility = false;
-      debugPrint('Database ready');
-    } catch(e) {
-      debugPrint(e.toString());
-    }
-  }
-
-  Future<void> openDbMemory() async {
-    try {
-      db = GeopackageDb.memory(); //Will not use the file db
       db.openOrCreate();
       db.forceRasterMobileCompatibility = false;
       debugPrint('Database ready');
@@ -113,29 +99,12 @@ class DbHelper {
     }
   }
 
-  Future<int> getRowCount(TableName table) async{
-    try {
-      QueryResult select = db.select("SELECT COUNT(*) AS COUNT FROM ${table.fixedName}");
-      QueryResultRow firstRow = select.first;
-      return firstRow.get("COUNT");
-    } catch (e) {
-      debugPrint('Error getting row count: $e');
-      return 0;
-    }
-  }
-  
   Future<void> addCellToDb(int x, int y) async {
     String sql = "INSERT OR IGNORE INTO ${cells.fixedName} (cell_x, cell_y) VALUES (?, ?);";
     db.execute(sql, arguments: [x, y]);
   }
 
   Future<void> ensureCellsInArea(Envelope boundingBox) async {
-    if (_isDownloading) {
-      debugPrint('Already downloading cells, skipping...');
-      return;
-    }
-    _isDownloading = true;
-
     try {
       int minX = (boundingBox.getMinX() / gridSize).floor();
       int maxX = (boundingBox.getMaxX() / gridSize).floor();
@@ -173,8 +142,8 @@ class DbHelper {
           }
         }
       }
-    } finally {
-      _isDownloading = false;
+    } catch (e) {
+      debugPrint(e.toString());
     }
   }
 

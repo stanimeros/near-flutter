@@ -14,7 +14,6 @@ import 'package:simple_cluster/simple_cluster.dart';
 
 enum ClusteringAlgorithm {
   none,
-  random,
   kMeans1,
   kMeans2,
   dbscan,
@@ -40,9 +39,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   ClusteringAlgorithm selectedAlgorithm = ClusteringAlgorithm.none;
   bool _isCameraMoving = false;
 
-  static const int targetPoints = 20;  // Desired number of points
-  static const double minDistance = 0.0003;  // Min distance between points
-  static const double targetRadiusMeters = 50.0;
+  static const double bboxSize = 50.0;
   static const double metersPerDegree = 111000.0; // At equator
 
   @override
@@ -103,8 +100,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       );
       
       // Calculate 50m box
-      double latOffset = targetRadiusMeters / metersPerDegree;
-      double lonOffset = targetRadiusMeters / (metersPerDegree * cos(center.latitude * pi / 180));
+      double latOffset = bboxSize / metersPerDegree;
+      double lonOffset = bboxSize / (metersPerDegree * cos(center.latitude * pi / 180));
 
       // Create 50m bounding box
       jts.Envelope searchBox = jts.Envelope(
@@ -156,8 +153,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               strokeWidth: 1,
               strokeColor: isInSearchBox ? Colors.green : Colors.blue,
               fillColor: isInSearchBox ? 
-                Colors.green.withAlpha(32) : 
-                Colors.blue.withAlpha(32),
+                Colors.green.withAlpha(50) : 
+                Colors.blue.withAlpha(50),
             ),
           );
         });
@@ -174,7 +171,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
             ],
             strokeWidth: 2,
             strokeColor: Colors.red,
-            fillColor: Colors.transparent,
+            fillColor: Colors.red.withAlpha(50),
           ),
         );
       });
@@ -218,8 +215,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       );
       
       // Calculate degree offset for 50m radius
-      double latOffset = targetRadiusMeters / metersPerDegree;
-      double lonOffset = targetRadiusMeters / (metersPerDegree * cos(center.latitude * pi / 180));
+      double latOffset = bboxSize / metersPerDegree;
+      double lonOffset = bboxSize / (metersPerDegree * cos(center.latitude * pi / 180));
 
       // Create bounds from center point
       LatLng northeast = LatLng(
@@ -229,22 +226,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       LatLng southwest = LatLng(
         center.latitude - latOffset,
         center.longitude - lonOffset
-      );
-      
-      // Show ONLY the 50m box in red
-      _polygons.add(
-        Polygon(
-          polygonId: const PolygonId('searchArea'),
-          points: [
-            northeast,
-            LatLng(northeast.latitude, southwest.longitude),
-            southwest,
-            LatLng(southwest.latitude, northeast.longitude),
-          ],
-          strokeWidth: 2,
-          strokeColor: Colors.red,
-          fillColor: Colors.red.withAlpha(50),
-        ),
       );
 
       // Use the 50m radius bounds for querying POIs
@@ -260,15 +241,11 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
       List<jts.Point> filteredPoints = [];
       final zoom = await _mapController!.getZoomLevel();
-      
+      double minDistanceMeters = pow(10, (20 - zoom) + 1).toDouble();
+
       switch (selectedAlgorithm) {
         case ClusteringAlgorithm.none:
           filteredPoints = points;
-          break;
-
-        case ClusteringAlgorithm.random:
-          points.shuffle();
-          filteredPoints = points.take(targetPoints).toList();
           break;
           
         case ClusteringAlgorithm.kMeans1:
@@ -284,7 +261,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
           break;
           
         case ClusteringAlgorithm.dbscan:
-          double epsilon = minDistance * (20 / zoom);
+          double epsilon = minDistanceMeters;
           final dbscan = DBSCANCluster(
             epsilon: epsilon,
             minPoints: max(2, min(5, points.length ~/ 50)),
@@ -293,7 +270,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
           break;
           
         case ClusteringAlgorithm.hierarchical:
-          final minClusters = max(3, min(15, points.length ~/ targetPoints));
+          final minClusters = max(3, min(15, points.length ~/ bboxSize));
           final hierarchical = HierarchicalCluster(
             minClusters: minClusters,
             linkageType: LINKAGE.AVERAGE,
@@ -331,8 +308,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     switch (algorithm) {
       case ClusteringAlgorithm.none:
         return BitmapDescriptor.defaultMarker;
-      case ClusteringAlgorithm.random:
-        return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
       case ClusteringAlgorithm.kMeans1:
         return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue);
       case ClusteringAlgorithm.kMeans2:
