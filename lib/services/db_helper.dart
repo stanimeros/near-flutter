@@ -6,7 +6,6 @@ import 'package:flutter_geopackage/flutter_geopackage.dart';
 import 'package:dart_hydrologis_db/dart_hydrologis_db.dart';
 import 'package:flutter_near/services/osm_service.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:xml/xml.dart';
 import 'package:dart_hydrologis_utils/dart_hydrologis_utils.dart';
 
 class DbHelper {
@@ -15,20 +14,29 @@ class DbHelper {
   static String dbFilename = 'geopoints.gpkg';
   static TableName pois = TableName("pois", schemaSupported: false);
   static TableName cells = TableName("cells", schemaSupported: false);
-  static TableName keys = TableName("keys", schemaSupported: false);
 
   // Function to initialize the database
-  Future<void> initializeDb() async {
-    try{
+  Future<void> openDbFile() async {
+    try {
       ConnectionsHandler ch = ConnectionsHandler();
       Directory directory = await getApplicationDocumentsDirectory();
       String dbPath = '${directory.path}/$dbFilename';
       db = ch.open(dbPath);
-      // db = GeopackageDb.memory(); //Will not use the file db
       db.openOrCreate();
       db.forceRasterMobileCompatibility = false;
       debugPrint('Database ready');
-    }catch(e){
+    } catch(e) {
+      debugPrint(e.toString());
+    }
+  }
+
+  Future<void> openDbMemory() async {
+    try {
+      db = GeopackageDb.memory(); //Will not use the file db
+      db.openOrCreate();
+      db.forceRasterMobileCompatibility = false;
+      debugPrint('Database ready');
+    } catch(e) {
       debugPrint(e.toString());
     }
   }
@@ -163,17 +171,4 @@ class DbHelper {
 
     return boundingBox;
   }
-}
-
-// Helper function to parse XML and extract points data in an isolate
-List<Map<String, double>> parsePoints(String xmlString){
-  final document = XmlDocument.parse(xmlString);
-  return document.findAllElements('node').map((point) {
-    final lon = point.getAttribute('lon');
-    final lat = point.getAttribute('lat');
-    if (lon != null && lat != null) {
-      return {'lon': double.parse(lon), 'lat': double.parse(lat)};
-    }
-    return null;
-  }).whereType<Map<String, double>>().toList();
 }

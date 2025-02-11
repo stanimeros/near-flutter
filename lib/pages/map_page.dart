@@ -133,9 +133,10 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         bounds.southwest.longitude + lngPadding
       );
       
+      // Show current area in red
       _polygons.add(
         Polygon(
-          polygonId: const PolygonId('boundingBox'),
+          polygonId: const PolygonId('currentArea'),
           points: [
             paddedNE,
             LatLng(paddedNE.latitude, paddedSW.longitude),
@@ -147,6 +148,29 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
           fillColor: Colors.red.withAlpha(50),
         ),
       );
+
+      // Add downloaded cells in blue
+      var result = DbHelper.db.select('''
+        SELECT min_lon, max_lon, min_lat, max_lat 
+        FROM ${DbHelper.cells.fixedName}
+      ''');
+
+      result.forEach((row) {
+        _polygons.add(
+          Polygon(
+            polygonId: PolygonId('cell_${row.get('min_lon')}_${row.get('min_lat')}'),
+            points: [
+              LatLng(row.get('max_lat'), row.get('max_lon')),
+              LatLng(row.get('max_lat'), row.get('min_lon')),
+              LatLng(row.get('min_lat'), row.get('min_lon')),
+              LatLng(row.get('min_lat'), row.get('max_lon')),
+            ],
+            strokeWidth: 1,
+            strokeColor: Colors.blue,
+            fillColor: Colors.blue.withAlpha(30),
+          ),
+        );
+      });
 
       // Use the padded bounds for querying POIs
       jts.Envelope boundingBox = jts.Envelope(
@@ -292,6 +316,35 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       appBar: AppBar(
         title: const Text('POIs Map'),
         actions: [
+          // Clear DB Button
+          IconButton(
+            icon: const Icon(Icons.delete_sweep),
+            tooltip: 'Clear all data',
+            onPressed: () async {
+              setState(() {
+                isLoadingPOIs = true;
+              });
+              
+              await DbHelper().emptyTable(DbHelper.pois);
+              await DbHelper().emptyTable(DbHelper.cells);
+              
+              setState(() {
+                _markers = {};
+                _polygons = {};
+                isLoadingPOIs = false;
+              });
+
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('All data cleared'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+          ),
+          const SizedBox(width: 8),
           Theme(
             data: Theme.of(context).copyWith(
               popupMenuTheme: PopupMenuThemeData(
