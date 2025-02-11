@@ -17,6 +17,8 @@ import 'package:flutter_near/services/user_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize both databases
   await DbHelper().openDbFile();
   await DbHelper().createCellsTable();
   await DbHelper().createSpatialTable();

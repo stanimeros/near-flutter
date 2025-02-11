@@ -4,14 +4,14 @@ import 'package:dart_jts/dart_jts.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_geopackage/flutter_geopackage.dart';
 import 'package:dart_hydrologis_db/dart_hydrologis_db.dart';
-import 'package:flutter_near/services/osm_helper.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:dart_hydrologis_utils/dart_hydrologis_utils.dart';
+import 'package:xml/xml.dart';
+import 'package:http/http.dart' as http;
 
 class DbHelper {
-
   static late GeopackageDb db;
-  static String dbFilename = 'geopoints.gpkg';
+  static String dbFilename = 'points.gpkg';
   static TableName pois = TableName("pois", schemaSupported: false);
   static TableName cells = TableName("cells", schemaSupported: false);
 
@@ -82,15 +82,14 @@ class DbHelper {
   Future<void> createCellsTable() async {
     try {
       if (!db.hasTable(cells)) {
-        db.execute('''
-          CREATE TABLE IF NOT EXISTS ${cells.fixedName} (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            cell_x INTEGER NOT NULL,
-            cell_y INTEGER NOT NULL,
-            downloaded_at INTEGER NOT NULL,
-            UNIQUE(cell_x, cell_y)
-          )
-        ''');
+        db.createSpatialTable(
+          cells,
+          4326,
+          "cell_x INTEGER, cell_y INTEGER",
+          ["id INTEGER PRIMARY KEY AUTOINCREMENT"],
+          null,
+          false,
+        );
 
         debugPrint('Cells table created');
       }
@@ -132,9 +131,66 @@ class DbHelper {
     db.execute(sql, arguments: [geomBytes]);
   }
 
+  Future<void> addCellToDb(int x, int y) async {
+    String sql = "INSERT OR IGNORE INTO ${cells.fixedName} (cell_x, cell_y) VALUES (?, ?);";
+    db.execute(sql, arguments: [x, y]);
+  }
+
+  Future<void> ensureCellsInArea(Envelope boundingBox) async {
+    // Convert to grid coordinates
+    const double gridSize = 0.001;
+    int minX = (boundingBox.getMinX() / gridSize).floor();
+    int maxX = (boundingBox.getMaxX() / gridSize).floor();
+    int minY = (boundingBox.getMinY() / gridSize).floor();
+    int maxY = (boundingBox.getMaxY() / gridSize).floor();
+
+    debugPrint('Checking cells from ($minX,$minY) to ($maxX,$maxY)');
+
+    // Get existing cells in area
+    List<Geometry?> existingCells = db.getGeometriesIn(
+      cells, envelope: boundingBox
+    );
+
+    // Download missing cells
+    for (int x = minX; x <= maxX; x++) {
+      for (int y = minY; y <= maxY; y++) {
+        bool cellExists = false;
+        for (var geom in existingCells) {
+          if (geom != null) {
+            // Check if this cell matches current coordinates
+            Point point = geom as Point;
+            if (point.getX() == x && point.getY() == y) {
+              cellExists = true;
+              break;
+            }
+          }
+        }
+
+        if (!cellExists) {
+          debugPrint('Downloading cell ($x,$y)');
+          // Calculate cell bounds
+          double cellMinLon = x * gridSize;
+          double cellMaxLon = (x + 1) * gridSize;
+          double cellMinLat = y * gridSize;
+          double cellMaxLat = (y + 1) * gridSize;
+
+          await downloadPointsFromOSM(
+            cellMinLon, cellMinLat, cellMaxLon, cellMaxLat
+          );
+          await addCellToDb(x, y);
+        }
+      }
+    }
+  }
+  
+  Future<List<Geometry?>> getCellsInArea(Envelope boundingBox) async {
+    await ensureCellsInArea(boundingBox);
+    return db.getGeometriesIn(cells, envelope: boundingBox);
+  }
+
   // Function to get points within a bounding box
   Future<List<Point>> getPointsInBoundingBox(Envelope boundingBox) async {
-    await OSMHelper().ensurePointsInArea(boundingBox);
+    await ensureCellsInArea(boundingBox);
 
     List<Point> list = [];
     DateTime before = DateTime.now();
@@ -191,4 +247,36 @@ class DbHelper {
 
     return boundingBox;
   }
+
+  Future<void> downloadPointsFromOSM(double minLon, double minLat, double maxLon, double maxLat) async {
+    String url = 'https://overpass-api.de/api/map?bbox='
+      '$minLon,$minLat,$maxLon,$maxLat';  // OSM expects: min_lon,min_lat,max_lon,max_lat
+    
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode == 200) {
+      final points = await compute(parsePoints, response.body);
+      debugPrint('Downloaded ${points.length} points');
+
+      for (var point in points) {
+        await DbHelper().addPointToDb(point['lon']!, point['lat']!);
+      } 
+    } else {
+      debugPrint('Failed request URL: $url');
+      throw Exception('Failed to download points: ${response.statusCode}');
+    }
+  }
+}
+
+// Helper function to parse XML and extract points data in an isolate
+List<Map<String, double>> parsePoints(String xmlString){
+  final document = XmlDocument.parse(xmlString);
+  return document.findAllElements('node').map((point) {
+    final lon = point.getAttribute('lon');
+    final lat = point.getAttribute('lat');
+    if (lon != null && lat != null) {
+      return {'lon': double.parse(lon), 'lat': double.parse(lat)};
+    }
+    return null;
+  }).whereType<Map<String, double>>().toList();
 }

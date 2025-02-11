@@ -89,22 +89,109 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _updateCellsVisualization() async {
+    if (!isMapCreated || _mapController == null) return;
+
+    try {
+      LatLngBounds bounds = await _mapController!.getVisibleRegion();
+      const gridSize = 0.001; // Same as DbHelper.gridSize
+
+      // Create JTS envelope from bounds
+      jts.Envelope boundingBox = jts.Envelope(
+        bounds.southwest.longitude,
+        bounds.northeast.longitude, 
+        bounds.southwest.latitude,
+        bounds.northeast.latitude
+      );
+
+      // Get downloaded cells
+      final downloadedCells = await DbHelper().getCellsInArea(boundingBox);
+
+      setState(() {
+        _polygons.clear();
+
+        // Add current view area polygon
+        _polygons.add(
+          Polygon(
+            polygonId: const PolygonId('currentArea'),
+            points: [
+              bounds.northeast,
+              LatLng(bounds.northeast.latitude, bounds.southwest.longitude),
+              bounds.southwest,
+              LatLng(bounds.southwest.latitude, bounds.northeast.longitude),
+            ],
+            strokeWidth: 2,
+            strokeColor: Colors.red,
+            fillColor: Colors.red.withAlpha(32),
+          ),
+        );
+
+        // Convert bounds to grid coordinates
+        int minX = (bounds.southwest.longitude / gridSize).floor();
+        int maxX = (bounds.northeast.longitude / gridSize).floor();
+        int minY = (bounds.southwest.latitude / gridSize).floor();
+        int maxY = (bounds.northeast.latitude / gridSize).floor();
+
+        // Add cell polygons
+        for (int x = minX; x <= maxX; x++) {
+          for (int y = minY; y <= maxY; y++) {
+            bool isDownloaded = false;
+            for (var geom in downloadedCells) {
+              if (geom != null) {
+                jts.Point point = geom as jts.Point;
+                if (point.getX() == x && point.getY() == y) {
+                  isDownloaded = true;
+                  break;
+                }
+              }
+            }
+            
+            // Calculate cell corners
+            double minLon = x * gridSize;
+            double maxLon = (x + 1) * gridSize;
+            double minLat = y * gridSize;
+            double maxLat = (y + 1) * gridSize;
+
+            _polygons.add(
+              Polygon(
+                polygonId: PolygonId('cell_${x}_$y'),
+                points: [
+                  LatLng(maxLat, maxLon), // NE
+                  LatLng(maxLat, minLon), // NW
+                  LatLng(minLat, minLon), // SW
+                  LatLng(minLat, maxLon), // SE
+                ],
+                strokeWidth: 1,
+                strokeColor: isDownloaded ? Colors.blue : Colors.grey,
+                fillColor: isDownloaded ? 
+                  Colors.blue.withAlpha(32) : 
+                  Colors.grey.withAlpha(16),
+              ),
+            );
+          }
+        }
+      });
+    } catch (e) {
+      debugPrint('Error updating cells visualization: $e');
+    }
+  }
+
   void _onMapCreated(GoogleMapController controller) {
-    if (!mounted) return;
-    
-    // Dispose of any existing controller first
-    _mapController?.dispose();
-    
-    setState(() {
-      _mapController = controller;
-      isMapCreated = true;
-    });
-    
-    _loadPOIs();
+    _mapController = controller;
+    isMapCreated = true;
+    _updateCellsVisualization(); // Show cells when map is ready
   }
 
   void _onCameraMove(CameraPosition position) {
     _isCameraMoving = true;
+  }
+
+  void _onCameraIdle() {
+    if (_isCameraMoving) {
+      _isCameraMoving = false;
+      _loadPOIs();
+      _updateCellsVisualization(); // Update cells when camera stops
+    }
   }
 
   Future<void> _loadPOIs() async {
@@ -148,38 +235,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
           fillColor: Colors.red.withAlpha(50),
         ),
       );
-
-      // Add downloaded cells in blue
-      var result = DbHelper.db.select('''
-        SELECT cell_x, cell_y 
-        FROM ${DbHelper.cells.fixedName}
-      ''');
-
-      const gridSize = 0.002;  // 0.002 degrees per cell
-      result.forEach((row) {
-        int x = row.get('cell_x');
-        int y = row.get('cell_y');
-        
-        double minLon = x * gridSize;
-        double maxLon = (x + 1) * gridSize;
-        double minLat = y * gridSize;
-        double maxLat = (y + 1) * gridSize;
-
-        _polygons.add(
-          Polygon(
-            polygonId: PolygonId('cell_${x}_$y'),
-            points: [
-              LatLng(maxLat, maxLon),  // NE
-              LatLng(maxLat, minLon),  // NW
-              LatLng(minLat, minLon),  // SW
-              LatLng(minLat, maxLon),  // SE
-            ],
-            strokeWidth: 1,
-            strokeColor: Colors.blue,
-            fillColor: Colors.blue.withAlpha(30),
-          ),
-        );
-      });
 
       // Use the padded bounds for querying POIs
       jts.Envelope boundingBox = jts.Envelope(
@@ -335,7 +390,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               });
               
               await DbHelper().emptyTable(DbHelper.pois);
-              await DbHelper().emptyTable(DbHelper.cells);
               
               setState(() {
                 _markers = {};
@@ -403,12 +457,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               markers: _markers,
               polygons: _polygons,
               onCameraMove: _onCameraMove,
-              onCameraIdle: () {
-                if (_isCameraMoving) {  // Only reload if camera was moving
-                  _isCameraMoving = false;
-                  _loadPOIs();
-                }
-              },
+              onCameraIdle: _onCameraIdle,
             ),
           if (isLoadingPOIs)
             Container(
