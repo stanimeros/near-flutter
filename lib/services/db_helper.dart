@@ -15,6 +15,9 @@ class DbHelper {
   static TableName pois = TableName("pois", schemaSupported: false);
   static TableName cells = TableName("cells", schemaSupported: false);
 
+  bool _isDownloading = false;
+  static const double gridSize = 0.0025;
+
   // Function to initialize the database
   Future<void> openDbFile() async {
     try {
@@ -120,72 +123,59 @@ class DbHelper {
       return 0;
     }
   }
-
-  // Function to add a point to the database
-  Future<void> addPointToDb(double lon, double lat) async{
-    GeometryFactory gf = GeometryFactory.defaultPrecision();
-    Point point = gf.createPoint(Coordinate(lon, lat));
-    List<int> geomBytes = GeoPkgGeomWriter().write(point);
-
-    String sql = "INSERT OR IGNORE INTO ${pois.fixedName} (geopoint) VALUES (?);";
-    db.execute(sql, arguments: [geomBytes]);
-  }
-
+  
   Future<void> addCellToDb(int x, int y) async {
     String sql = "INSERT OR IGNORE INTO ${cells.fixedName} (cell_x, cell_y) VALUES (?, ?);";
     db.execute(sql, arguments: [x, y]);
   }
 
   Future<void> ensureCellsInArea(Envelope boundingBox) async {
-    // Convert to grid coordinates
-    const double gridSize = 0.001;
-    int minX = (boundingBox.getMinX() / gridSize).floor();
-    int maxX = (boundingBox.getMaxX() / gridSize).floor();
-    int minY = (boundingBox.getMinY() / gridSize).floor();
-    int maxY = (boundingBox.getMaxY() / gridSize).floor();
+    if (_isDownloading) {
+      debugPrint('Already downloading cells, skipping...');
+      return;
+    }
+    _isDownloading = true;
 
-    debugPrint('Checking cells from ($minX,$minY) to ($maxX,$maxY)');
+    try {
+      int minX = (boundingBox.getMinX() / gridSize).floor();
+      int maxX = (boundingBox.getMaxX() / gridSize).floor();
+      int minY = (boundingBox.getMinY() / gridSize).floor();
+      int maxY = (boundingBox.getMaxY() / gridSize).floor();
 
-    // Get existing cells in area
-    List<Geometry?> existingCells = db.getGeometriesIn(
-      cells, envelope: boundingBox
-    );
+      debugPrint('Grid area: ($minX,$minY) to ($maxX,$maxY) - ${(maxX-minX)*(maxY-minY)} cells');
 
-    // Download missing cells
-    for (int x = minX; x <= maxX; x++) {
-      for (int y = minY; y <= maxY; y++) {
-        bool cellExists = false;
-        for (var geom in existingCells) {
-          if (geom != null) {
-            // Check if this cell matches current coordinates
-            Point point = geom as Point;
-            if (point.getX() == x && point.getY() == y) {
-              cellExists = true;
-              break;
-            }
+      // Get existing cells first
+      final existingCells = db.select(
+        'SELECT cell_x, cell_y FROM ${cells.fixedName} WHERE cell_x BETWEEN $minX AND $maxX AND cell_y BETWEEN $minY AND $maxY'
+      );
+      
+      // Fix: Create set properly
+      final existingSet = <String>{};
+      existingCells.forEach(
+        (row) => existingSet.add('${row.get("cell_x")},${row.get("cell_y")}')
+      );
+
+      debugPrint('Found ${existingSet.length} existing cells');
+
+      // Download missing cells with rate limiting
+      for (int x = minX; x <= maxX; x++) {
+        for (int y = minY; y <= maxY; y++) {
+          final cellKey = '$x,$y';
+          if (!existingSet.contains(cellKey)) {
+            debugPrint('Need to download cell $cellKey');
+            double cellMinLon = x * gridSize;
+            double cellMaxLon = (x + 1) * gridSize;
+            double cellMinLat = y * gridSize;
+            double cellMaxLat = (y + 1) * gridSize;
+
+            await downloadPointsFromOSM(cellMinLon, cellMinLat, cellMaxLon, cellMaxLat);
+            await addCellToDb(x, y);
           }
         }
-
-        if (!cellExists) {
-          debugPrint('Downloading cell ($x,$y)');
-          // Calculate cell bounds
-          double cellMinLon = x * gridSize;
-          double cellMaxLon = (x + 1) * gridSize;
-          double cellMinLat = y * gridSize;
-          double cellMaxLat = (y + 1) * gridSize;
-
-          await downloadPointsFromOSM(
-            cellMinLon, cellMinLat, cellMaxLon, cellMaxLat
-          );
-          await addCellToDb(x, y);
-        }
       }
+    } finally {
+      _isDownloading = false;
     }
-  }
-  
-  Future<List<Geometry?>> getCellsInArea(Envelope boundingBox) async {
-    await ensureCellsInArea(boundingBox);
-    return db.getGeometriesIn(cells, envelope: boundingBox);
   }
 
   // Function to get points within a bounding box
@@ -250,19 +240,40 @@ class DbHelper {
 
   Future<void> downloadPointsFromOSM(double minLon, double minLat, double maxLon, double maxLat) async {
     String url = 'https://overpass-api.de/api/map?bbox='
-      '$minLon,$minLat,$maxLon,$maxLat';  // OSM expects: min_lon,min_lat,max_lon,max_lat
+      '$minLon,$minLat,$maxLon,$maxLat';
     
-    final response = await http.get(Uri.parse(url));
+    debugPrint('Downloading from: $url');
+    final response = await http.get(
+      Uri.parse(url),
+      headers: {'User-Agent': 'Near App/1.0'}, // Add user agent
+    ).timeout(const Duration(seconds: 30));
 
     if (response.statusCode == 200) {
+      debugPrint('Parsing points');
       final points = await compute(parsePoints, response.body);
-      debugPrint('Downloaded ${points.length} points');
+      debugPrint('Got ${points.length} points');
 
-      for (var point in points) {
-        await DbHelper().addPointToDb(point['lon']!, point['lat']!);
-      } 
+      GeometryFactory gf = GeometryFactory.defaultPrecision();
+
+      try {
+        // Build values string for all points
+        final values = points.map((p) => "(?)").join(",");
+        final arguments = points.map((p) {
+          Point point = gf.createPoint(Coordinate(p['lon']!, p['lat']!));
+          List<int> geomBytes = GeoPkgGeomWriter().write(point);
+          return geomBytes;
+        }).toList();
+
+        
+        // Execute single insert with all points
+        db.execute(
+          "INSERT OR IGNORE INTO ${pois.fixedName} (geopoint) VALUES $values",
+          arguments: arguments
+        );
+      } catch (e) {
+        debugPrint(e.toString());
+      }
     } else {
-      debugPrint('Failed request URL: $url');
       throw Exception('Failed to download points: ${response.statusCode}');
     }
   }

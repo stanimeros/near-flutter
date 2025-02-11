@@ -42,6 +42,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
   static const int targetPoints = 20;  // Desired number of points
   static const double minDistance = 0.0003;  // Min distance between points
+  static const double targetRadiusMeters = 50.0;
+  static const double metersPerDegree = 111000.0; // At equator
 
   @override
   void initState() {
@@ -90,13 +92,16 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   }
 
   Future<void> _updateCellsVisualization() async {
+    debugPrint('=== Starting cell visualization update ===');
+    final startTime = DateTime.now();
+
     if (!isMapCreated || _mapController == null) return;
 
     try {
+      final boundsStart = DateTime.now();
       LatLngBounds bounds = await _mapController!.getVisibleRegion();
-      const gridSize = 0.001; // Same as DbHelper.gridSize
+      debugPrint('Got bounds in ${DateTime.now().difference(boundsStart).inMilliseconds}ms');
 
-      // Create JTS envelope from bounds
       jts.Envelope boundingBox = jts.Envelope(
         bounds.southwest.longitude,
         bounds.northeast.longitude, 
@@ -104,9 +109,11 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         bounds.northeast.latitude
       );
 
-      // Get downloaded cells
-      final downloadedCells = await DbHelper().getCellsInArea(boundingBox);
+      final cellsStart = DateTime.now();
+      final downloadedCells = DbHelper.db.getGeometriesIn(DbHelper.cells, envelope: boundingBox);
+      debugPrint('Got cells in ${DateTime.now().difference(cellsStart).inMilliseconds}ms');
 
+      final drawStart = DateTime.now();
       setState(() {
         _polygons.clear();
 
@@ -127,10 +134,10 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         );
 
         // Convert bounds to grid coordinates
-        int minX = (bounds.southwest.longitude / gridSize).floor();
-        int maxX = (bounds.northeast.longitude / gridSize).floor();
-        int minY = (bounds.southwest.latitude / gridSize).floor();
-        int maxY = (bounds.northeast.latitude / gridSize).floor();
+        int minX = (bounds.southwest.longitude / DbHelper.gridSize).floor();
+        int maxX = (bounds.northeast.longitude / DbHelper.gridSize).floor();
+        int minY = (bounds.southwest.latitude / DbHelper.gridSize).floor();
+        int maxY = (bounds.northeast.latitude / DbHelper.gridSize).floor();
 
         // Add cell polygons
         for (int x = minX; x <= maxX; x++) {
@@ -147,10 +154,10 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
             }
             
             // Calculate cell corners
-            double minLon = x * gridSize;
-            double maxLon = (x + 1) * gridSize;
-            double minLat = y * gridSize;
-            double maxLat = (y + 1) * gridSize;
+            double minLon = x * DbHelper.gridSize;
+            double maxLon = (x + 1) * DbHelper.gridSize;
+            double minLat = y * DbHelper.gridSize;
+            double maxLat = (y + 1) * DbHelper.gridSize;
 
             _polygons.add(
               Polygon(
@@ -171,6 +178,9 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
           }
         }
       });
+      debugPrint('Drew cells in ${DateTime.now().difference(drawStart).inMilliseconds}ms');
+      
+      debugPrint('=== Finished visualization in ${DateTime.now().difference(startTime).inMilliseconds}ms ===');
     } catch (e) {
       debugPrint('Error updating cells visualization: $e');
     }
@@ -204,20 +214,25 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     });
 
     try {
+      // Get current center instead of bounds
       LatLngBounds bounds = await _mapController!.getVisibleRegion();
-      
-      // Add padding to the bounding box (about 10% inset)
-      double latPadding = (bounds.northeast.latitude - bounds.southwest.latitude) * 0.1;
-      double lngPadding = (bounds.northeast.longitude - bounds.southwest.longitude) * 0.1;
-      
-      // Create padded bounds for visualization
-      LatLng paddedNE = LatLng(
-        bounds.northeast.latitude - latPadding,
-        bounds.northeast.longitude - lngPadding
+      LatLng center = LatLng(
+        (bounds.northeast.latitude + bounds.southwest.latitude) / 2,
+        (bounds.northeast.longitude + bounds.southwest.longitude) / 2
       );
-      LatLng paddedSW = LatLng(
-        bounds.southwest.latitude + latPadding,
-        bounds.southwest.longitude + lngPadding
+      
+      // Calculate degree offset for 50m radius
+      double latOffset = targetRadiusMeters / metersPerDegree;
+      double lonOffset = targetRadiusMeters / (metersPerDegree * cos(center.latitude * pi / 180));
+
+      // Create bounds from center point
+      LatLng northeast = LatLng(
+        center.latitude + latOffset,
+        center.longitude + lonOffset
+      );
+      LatLng southwest = LatLng(
+        center.latitude - latOffset,
+        center.longitude - lonOffset
       );
       
       // Show current area in red
@@ -225,10 +240,10 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         Polygon(
           polygonId: const PolygonId('currentArea'),
           points: [
-            paddedNE,
-            LatLng(paddedNE.latitude, paddedSW.longitude),
-            paddedSW,
-            LatLng(paddedSW.latitude, paddedNE.longitude),
+            northeast,
+            LatLng(northeast.latitude, southwest.longitude),
+            southwest,
+            LatLng(southwest.latitude, northeast.longitude),
           ],
           strokeWidth: 2,
           strokeColor: Colors.red,
@@ -236,12 +251,12 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         ),
       );
 
-      // Use the padded bounds for querying POIs
+      // Use the 50m radius bounds for querying POIs
       jts.Envelope boundingBox = jts.Envelope(
-        paddedSW.longitude,
-        paddedNE.longitude,
-        paddedSW.latitude,
-        paddedNE.latitude,
+        southwest.longitude,
+        northeast.longitude,
+        southwest.latitude,
+        northeast.latitude,
       );
 
       // First try to get points from DB

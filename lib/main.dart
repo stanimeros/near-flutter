@@ -37,7 +37,7 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> {
-  PageController pageController = PageController(initialPage: 0);
+  PageController pageController = PageController(initialPage: 2);
 
   @override
   void initState() {
