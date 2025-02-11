@@ -1,14 +1,16 @@
-import 'package:simple_cluster/simple_cluster.dart';
 import 'package:dart_jts/dart_jts.dart';
+import 'package:simple_cluster/simple_cluster.dart';
 
 class DBSCANCluster {
   final double epsilon;
   final int minPoints;
+  final int targetCount;
   late DBSCAN _dbscan;
   
   DBSCANCluster({
-    this.epsilon = 3.0,
-    this.minPoints = 2,
+    required this.epsilon,
+    required this.minPoints,
+    required this.targetCount,
   }) {
     _dbscan = DBSCAN(
       epsilon: epsilon,
@@ -18,6 +20,7 @@ class DBSCANCluster {
 
   List<Point> filterPOIs(List<Point> points) {
     if (points.isEmpty) return [];
+    if (points.length <= targetCount) return points;
 
     // Convert Points to List<List<double>> format
     List<List<double>> dataset = points.map((point) => [
@@ -29,54 +32,17 @@ class DBSCANCluster {
     List<List<int>> clusters = _dbscan.run(dataset);
     List<int> noise = _dbscan.noise;
     
-    // If no clusters found, try to use noise points
-    if (clusters.isEmpty && noise.isEmpty) return [];
-
-    List<int> selectedIndices = [];
-
-    // Process clusters
-    if (clusters.isNotEmpty) {
-      // Sort clusters by size (largest first)
-      clusters.sort((a, b) => b.length.compareTo(a.length));
-
-      // Take points from each cluster
-      for (var cluster in clusters) {
-        if (cluster.isEmpty) continue;
-        
-        // For larger clusters, take more points
-        int pointsToTake = _getPointsToTake(cluster.length);
-        cluster.shuffle();
-        selectedIndices.addAll(cluster.take(pointsToTake));
-      }
+    // Collect all points (from clusters and noise)
+    List<int> allIndices = [...noise];
+    for (var cluster in clusters) {
+      allIndices.addAll(cluster);
     }
 
-    // Add some noise points if we don't have enough points
-    if (selectedIndices.length < 50 && noise.isNotEmpty) {
-      noise.shuffle();
-      int remainingPoints = 50 - selectedIndices.length;
-      int noisePointsToTake = noise.length > remainingPoints ? remainingPoints : noise.length;
-      selectedIndices.addAll(noise.take(noisePointsToTake));
-    }
-
-    // If still not enough points, add more from largest clusters
-    if (selectedIndices.length < 30 && clusters.isNotEmpty) {
-      var largestCluster = clusters[0];
-      largestCluster.shuffle();
-      selectedIndices.addAll(
-        largestCluster.where((i) => !selectedIndices.contains(i)).take(30 - selectedIndices.length)
-      );
-    }
-
-    return selectedIndices.map((index) => points[index]).toList();
-  }
-
-  // Helper method to determine how many points to take based on cluster size
-  int _getPointsToTake(int clusterSize) {
-    if (clusterSize < 5) return 1;
-    if (clusterSize < 10) return 2;
-    if (clusterSize < 20) return 3;
-    if (clusterSize < 50) return 5;
-    return 8; // For very large clusters
+    // Shuffle and take exactly targetCount points
+    allIndices.shuffle();
+    return allIndices.take(targetCount)
+      .map((i) => points[i])
+      .toList();
   }
 
   List<List<int>> getClusters(List<Point> points) {

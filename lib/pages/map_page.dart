@@ -14,6 +14,7 @@ import 'package:simple_cluster/simple_cluster.dart';
 
 enum ClusteringAlgorithm {
   none,
+  random,
   kMeans1,
   kMeans2,
   dbscan,
@@ -238,46 +239,72 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
       // First try to get points from DB
       List<jts.Point> points = await DbHelper().getPointsInBoundingBox(boundingBox);
+      final zoom = await _mapController!.getZoomLevel();
+      
+      // Dynamic clustering parameters
+      int pointCount = points.length;
+      debugPrint('Found $pointCount points at zoom $zoom');
+
+      // Calculate target markers based on zoom
+      double zoomFactor = (zoom - 15) / 5;  // 0.0 at zoom 15, 1.0 at zoom 20
+      zoomFactor = max(0.0, min(1.0, zoomFactor));  
+      int targetCount = (5 + (10 * zoomFactor)).round();  // 5 at zoom 15, 15 at zoom 20
+      targetCount = min(pointCount, targetCount);
+
+      // Minimum distance decreases with zoom
+      double minDistanceMeters = bboxSize / (5 + (10 * zoomFactor));  // 15m at zoom 20, 50m at zoom 15
+
+      debugPrint('Target: $targetCount points, min distance: ${minDistanceMeters.round()}m');
 
       List<jts.Point> filteredPoints = [];
-      final zoom = await _mapController!.getZoomLevel();
-      double minDistanceMeters = pow(10, (20 - zoom) + 1).toDouble();
-
       switch (selectedAlgorithm) {
         case ClusteringAlgorithm.none:
           filteredPoints = points;
           break;
-          
-        case ClusteringAlgorithm.kMeans1:
-          final k = max(3, min(15, points.length ~/ 10));
-          final kmeans1 = KMeansCluster1(k: k);
-          filteredPoints = kmeans1.filterPOIs(points);
+
+        case ClusteringAlgorithm.random:
+          filteredPoints = points.length > targetCount ? 
+            points.take(targetCount).toList() : points;
           break;
           
-        case ClusteringAlgorithm.kMeans2:
-          final k = max(3, min(15, points.length ~/ 10));
-          final kmeans2 = KMeansCluster2(k: k);
-          filteredPoints = kmeans2.filterPOIs(points);
+        case ClusteringAlgorithm.kMeans1:
+          // K-means works best with exact k value
+          final kmeans = KMeansCluster1(k: targetCount);
+          filteredPoints = kmeans.filterPOIs(points);
+          break;
+          
+        case ClusteringAlgorithm.kMeans2: 
+          // K-means works best with exact k value
+          final kmeans = KMeansCluster2(k: targetCount);
+          filteredPoints = kmeans.filterPOIs(points);
           break;
           
         case ClusteringAlgorithm.dbscan:
-          double epsilon = minDistanceMeters;
+          // DBSCAN needs epsilon and minPoints tuned to get close to target
+          // Adjust epsilon based on point density to get closer to target count
+          double pointDensity = points.length / (bboxSize * bboxSize);
+          double adjustedEpsilon = minDistanceMeters * sqrt(targetCount / max(1.0, pointDensity));
+          
           final dbscan = DBSCANCluster(
-            epsilon: epsilon,
-            minPoints: max(2, min(5, points.length ~/ 50)),
+            epsilon: adjustedEpsilon / metersPerDegree,
+            minPoints: max(2, min(4, points.length ~/ (targetCount * 2))),
+            targetCount: targetCount,
           );
           filteredPoints = dbscan.filterPOIs(points);
           break;
           
         case ClusteringAlgorithm.hierarchical:
-          final minClusters = max(3, min(15, points.length ~/ bboxSize));
+          // Hierarchical needs slightly more clusters to get close to target
+          final adjustedClusters = targetCount;
           final hierarchical = HierarchicalCluster(
-            minClusters: minClusters,
+            minClusters: adjustedClusters,
             linkageType: LINKAGE.AVERAGE,
           );
           filteredPoints = hierarchical.filterPOIs(points);
           break;
       }
+
+      debugPrint('Found ${points.length} points, target: $targetCount, filtered to: ${filteredPoints.length}');
 
       // Create markers for filtered points
       for (var point in filteredPoints) {
@@ -308,6 +335,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     switch (algorithm) {
       case ClusteringAlgorithm.none:
         return BitmapDescriptor.defaultMarker;
+      case ClusteringAlgorithm.random:
+        return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
       case ClusteringAlgorithm.kMeans1:
         return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue);
       case ClusteringAlgorithm.kMeans2:

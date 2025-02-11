@@ -11,6 +11,7 @@ class KMeansCluster1 {
 
   List<Point> filterPOIs(List<Point> points) {
     if (points.isEmpty) return [];
+    if (points.length <= k) return points;
 
     // Convert Points to List<List<double>> format
     List<List<double>> dataset = points.map((point) => [
@@ -18,43 +19,25 @@ class KMeansCluster1 {
       point.getY()
     ]).toList();
 
-    // Create Instance objects
-    List<kmeans1.Instance> instances = dataset.map((coords) {
-      return kmeans1.Instance(
-        location: coords,
-        id: coords.toString(),
-      );
-    }).toList();
-
-    // Initialize clusters
-    List<kmeans1.Cluster> clusters = kmeans1.initialClusters(k, instances);
+    // Create and run k-means
+    List<kmeans1.Instance> instances = dataset.map((coords) => 
+      kmeans1.Instance(location: coords, id: coords.toString())
+    ).toList();
     
-    // Run k-means
+    List<kmeans1.Cluster> clusters = kmeans1.initialClusters(k, instances);
     kmeans1.kMeans(clusters: clusters, instances: instances);
 
-    List<int> selectedIndices = [];
-
-    // Take points from each cluster
+    // Take one point from each cluster
+    List<Point> selectedPoints = [];
     for (var cluster in clusters) {
       if (cluster.instances.isEmpty) continue;
       
-      // Shuffle cluster points
-      cluster.instances.shuffle();
-      
-      // Take up to 10 points from each cluster
-      int pointsToTake = cluster.instances.length > 10 ? 10 : cluster.instances.length;
-      selectedIndices.addAll(
-        cluster.instances.take(pointsToTake).map((instance) => 
-          instances.indexOf(instance)
-        )
-      );
+      // Take a random point from the cluster
+      var instance = cluster.instances[0];
+      selectedPoints.add(points[instances.indexOf(instance)]);
     }
 
-    // If no points selected, return empty list
-    if (selectedIndices.isEmpty) return [];
-
-    // Convert back to Points
-    return selectedIndices.map((index) => points[index]).toList();
+    return selectedPoints;
   }
 }
 
@@ -67,6 +50,7 @@ class KMeansCluster2 {
 
   List<Point> filterPOIs(List<Point> points) {
     if (points.isEmpty) return [];
+    if (points.length <= k) return points;
 
     // Convert Points to List<List<double>> format
     List<List<double>> dataset = points.map((point) => [
@@ -74,43 +58,25 @@ class KMeansCluster2 {
       point.getY()
     ]).toList();
 
-    // Create KMeans instance
+    // Run k-means
     final kmeans = kmeans2.KMeans(dataset);
-    
-    // Run clustering
-    final clusters = kmeans.bestFit(
-      minK: k,
-      maxK: k,
-    );
+    final clusters = kmeans.bestFit(minK: k, maxK: k);
 
-    List<int> selectedIndices = [];
-
-    // Take points from each cluster
-    for (var i = 0; i < clusters.clusterPoints.length; i++) {
-      var clusterPoints = clusters.clusterPoints[i];
+    // Take one point from each cluster
+    List<Point> selectedPoints = [];
+    for (var clusterPoints in clusters.clusterPoints) {
       if (clusterPoints.isEmpty) continue;
       
-      // Shuffle cluster points
-      clusterPoints.shuffle();
-      
-      // Take up to 10 points from each cluster
-      int pointsToTake = clusterPoints.length > 10 ? 10 : clusterPoints.length;
-      
-      // Find indices of selected points in original dataset
-      for (var point in clusterPoints.take(pointsToTake)) {
-        int index = dataset.indexWhere((p) => 
-          p[0] == point[0] && p[1] == point[1]
-        );
-        if (index != -1) {
-          selectedIndices.add(index);
-        }
+      // Find the original point
+      var point = clusterPoints[0];
+      int index = dataset.indexWhere((p) => 
+        p[0] == point[0] && p[1] == point[1]
+      );
+      if (index != -1) {
+        selectedPoints.add(points[index]);
       }
     }
 
-    // If no points selected, return empty list
-    if (selectedIndices.isEmpty) return [];
-    
-    // Convert back to Points
-    return selectedIndices.map((index) => points[index]).toList();
+    return selectedPoints;
   }
 }
