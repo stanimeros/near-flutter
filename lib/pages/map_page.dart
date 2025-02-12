@@ -88,35 +88,14 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<jts.Envelope> getTargetBoundingBox() async {
-    LatLngBounds bounds = await _mapController!.getVisibleRegion();
-    LatLng center = LatLng(
-      (bounds.northeast.latitude + bounds.southwest.latitude) / 2,
-      (bounds.northeast.longitude + bounds.southwest.longitude) / 2
-    );
-    
-    // Calculate 50m box
-    double latOffset = targetBoxSize / metersPerDegree;
-    double lonOffset = targetBoxSize / (metersPerDegree * cos(center.latitude * pi / 180));
-
-    // Create 50m bounding box
-    jts.Envelope searchBox = jts.Envelope(
-      center.longitude - lonOffset,
-      center.longitude + lonOffset,
-      center.latitude - latOffset,
-      center.latitude + latOffset,
-    );
-
-    return searchBox;
-  }
-
   Future<void> _updateCellsVisualization() async {
     if (!isMapCreated || _mapController == null) return;
     final startTime = DateTime.now();
 
     try {
       // Get current center for 50m box
-      jts.Envelope searchBox = await getTargetBoundingBox();
+      LatLngBounds bounds = await _mapController!.getVisibleRegion();
+      jts.Envelope searchBox = await DbHelper().createBoundingBox(bounds.southwest.longitude, bounds.southwest.latitude, targetBoxSize);
 
       debugPrint('Getting cells from DB...');
       // Get cells from DB directly using SQL for better performance
@@ -218,7 +197,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
     try {
       // Get current center and bounds
-      jts.Envelope searchBox = await getTargetBoundingBox();
+      LatLngBounds bounds = await _mapController!.getVisibleRegion();
+      jts.Envelope searchBox = await DbHelper().createBoundingBox(bounds.southwest.longitude, bounds.southwest.latitude, targetBoxSize);
 
       // First try to get points from DB
       final zoom = await _mapController!.getZoomLevel();
