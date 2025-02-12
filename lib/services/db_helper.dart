@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:dart_jts/dart_jts.dart';
@@ -5,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_geopackage/flutter_geopackage.dart';
 import 'package:dart_hydrologis_db/dart_hydrologis_db.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:xml/xml.dart';
 import 'package:http/http.dart' as http;
 
 class DbHelper {
@@ -208,20 +208,21 @@ class DbHelper {
   }
 
   Future<void> downloadPointsFromOSM(double minLon, double minLat, double maxLon, double maxLat) async {
-    String url = 'https://overpass-api.de/api/map?bbox='
-      '$minLon,$minLat,$maxLon,$maxLat';
+    String url = 'https://overpass-api.de/api/interpreter?data=[out:json];'
+      'node($minLat,$minLon,$maxLat,$maxLon);'
+      'out;';
     
     debugPrint('Downloading from: $url');
     final response = await http.get(
       Uri.parse(url),
       headers: {'User-Agent': 'Near App/1.0'}, // Add user agent
-    ).timeout(const Duration(seconds: 30));
+    ).timeout(const Duration(seconds: 10));
 
     if (response.statusCode == 200) {
       debugPrint('Parsing points');
-      final points = await compute(parsePoints, response.body);
-      debugPrint('Got ${points.length} points');
+      final points = await compute(parsePointsFromJSON, response.body);
 
+      debugPrint('Got ${points.length} points');
       GeometryFactory gf = GeometryFactory.defaultPrecision();
 
       try {
@@ -248,14 +249,11 @@ class DbHelper {
   }
 }
 
-// Helper function to parse XML and extract points data in an isolate
-List<Map<String, double>> parsePoints(String xmlString){
-  final document = XmlDocument.parse(xmlString);
-  return document.findAllElements('node').map((point) {
-    final lon = point.getAttribute('lon');
-    final lat = point.getAttribute('lat');
-    if (lon != null && lat != null) {
-      return {'lon': double.parse(lon), 'lat': double.parse(lat)};
+List<Map<String, double>> parsePointsFromJSON(String jsonString){
+  final document = jsonDecode(jsonString);
+  return document['elements'].map((node) {
+    if (node['type'] == 'node') {
+      return {'lon': node['lon'] as double, 'lat': node['lat'] as double};
     }
     return null;
   }).whereType<Map<String, double>>().toList();

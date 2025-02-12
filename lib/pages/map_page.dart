@@ -112,6 +112,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
   Future<void> _updateCellsVisualization() async {
     if (!isMapCreated || _mapController == null) return;
+    final startTime = DateTime.now();
 
     try {
       // Get current center for 50m box
@@ -130,10 +131,11 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         '${(point.getX() / DbHelper.gridSize).floor()},${(point.getY() / DbHelper.gridSize).floor()}'
       ).toSet();
 
-      debugPrint('Updating visualization...');
       setState(() {
         _polygons.clear();
+      });
 
+      setState(() {
         // 1. Add all downloaded cells (blue)
         downloadedCells.forEach((row) {
           final x = row.get('cell_x') as int;
@@ -184,6 +186,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     } catch (e) {
       debugPrint('Error updating cells visualization: $e');
     }
+    final endTime = DateTime.now();
+    debugPrint('Visualization time taken: ${endTime.difference(startTime).inMilliseconds}ms');
   }
 
   void _onMapCreated(GoogleMapController controller) {
