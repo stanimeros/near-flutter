@@ -1,5 +1,4 @@
 import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:dart_jts/dart_jts.dart' as jts;
@@ -40,7 +39,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   ClusteringAlgorithm selectedAlgorithm = ClusteringAlgorithm.none;
   bool _isCameraMoving = false;
 
-  static const double bboxSize = 50.0;
+  static const double targetBoxSize = 50.0;
   static const double metersPerDegree = 111000.0; // At equator
 
   @override
@@ -89,28 +88,34 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     }
   }
 
+  Future<jts.Envelope> getTargetBoundingBox() async {
+    LatLngBounds bounds = await _mapController!.getVisibleRegion();
+    LatLng center = LatLng(
+      (bounds.northeast.latitude + bounds.southwest.latitude) / 2,
+      (bounds.northeast.longitude + bounds.southwest.longitude) / 2
+    );
+    
+    // Calculate 50m box
+    double latOffset = targetBoxSize / metersPerDegree;
+    double lonOffset = targetBoxSize / (metersPerDegree * cos(center.latitude * pi / 180));
+
+    // Create 50m bounding box
+    jts.Envelope searchBox = jts.Envelope(
+      center.longitude - lonOffset,
+      center.longitude + lonOffset,
+      center.latitude - latOffset,
+      center.latitude + latOffset,
+    );
+
+    return searchBox;
+  }
+
   Future<void> _updateCellsVisualization() async {
     if (!isMapCreated || _mapController == null) return;
 
     try {
       // Get current center for 50m box
-      LatLngBounds bounds = await _mapController!.getVisibleRegion();
-      LatLng center = LatLng(
-        (bounds.northeast.latitude + bounds.southwest.latitude) / 2,
-        (bounds.northeast.longitude + bounds.southwest.longitude) / 2
-      );
-      
-      // Calculate 50m box
-      double latOffset = bboxSize / metersPerDegree;
-      double lonOffset = bboxSize / (metersPerDegree * cos(center.latitude * pi / 180));
-
-      // Create 50m bounding box
-      jts.Envelope searchBox = jts.Envelope(
-        center.longitude - lonOffset,
-        center.longitude + lonOffset,
-        center.latitude - latOffset,
-        center.latitude + latOffset,
-      );
+      jts.Envelope searchBox = await getTargetBoundingBox();
 
       debugPrint('Getting cells from DB...');
       // Get cells from DB directly using SQL for better performance
@@ -165,10 +170,10 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
           Polygon(
             polygonId: const PolygonId('searchArea'),
             points: [
-              LatLng(center.latitude + latOffset, center.longitude + lonOffset),
-              LatLng(center.latitude + latOffset, center.longitude - lonOffset),
-              LatLng(center.latitude - latOffset, center.longitude - lonOffset),
-              LatLng(center.latitude - latOffset, center.longitude + lonOffset),
+              LatLng(searchBox.getMinY(), searchBox.getMinX()),
+              LatLng(searchBox.getMaxY(), searchBox.getMinX()),
+              LatLng(searchBox.getMaxY(), searchBox.getMaxX()),
+              LatLng(searchBox.getMinY(), searchBox.getMaxX()),
             ],
             strokeWidth: 2,
             strokeColor: Colors.red,
@@ -209,41 +214,15 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
     try {
       // Get current center and bounds
-      LatLngBounds bounds = await _mapController!.getVisibleRegion();
-      LatLng center = LatLng(
-        (bounds.northeast.latitude + bounds.southwest.latitude) / 2,
-        (bounds.northeast.longitude + bounds.southwest.longitude) / 2
-      );
-      
-      // Calculate degree offset for 50m radius
-      double latOffset = bboxSize / metersPerDegree;
-      double lonOffset = bboxSize / (metersPerDegree * cos(center.latitude * pi / 180));
-
-      // Create bounds from center point
-      LatLng northeast = LatLng(
-        center.latitude + latOffset,
-        center.longitude + lonOffset
-      );
-      LatLng southwest = LatLng(
-        center.latitude - latOffset,
-        center.longitude - lonOffset
-      );
-
-      // Use the 50m radius bounds for querying POIs
-      jts.Envelope boundingBox = jts.Envelope(
-        southwest.longitude,
-        northeast.longitude,
-        southwest.latitude,
-        northeast.latitude,
-      );
+      jts.Envelope searchBox = await getTargetBoundingBox();
 
       // First try to get points from DB
-      List<jts.Point> points = await DbHelper().getPointsInBoundingBox(boundingBox);
       final zoom = await _mapController!.getZoomLevel();
-      
+      List<jts.Point> points = await DbHelper().getPointsInBoundingBox(searchBox);
+
       // Dynamic clustering parameters
       int pointCount = points.length;
-      debugPrint('Found $pointCount points at zoom $zoom');
+      debugPrint('Found $pointCount points');
 
       // Calculate target markers based on zoom
       double zoomFactor = (zoom - 15) / 5;  // 0.0 at zoom 15, 1.0 at zoom 20
@@ -252,7 +231,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       targetCount = min(pointCount, targetCount);
 
       // Minimum distance decreases with zoom
-      double minDistanceMeters = bboxSize / (5 + (10 * zoomFactor));  // 15m at zoom 20, 50m at zoom 15
+      double minDistanceMeters = targetBoxSize / (5 + (10 * zoomFactor));  // 15m at zoom 20, 50m at zoom 15
 
       debugPrint('Target: $targetCount points, min distance: ${minDistanceMeters.round()}m');
 
@@ -282,7 +261,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         case ClusteringAlgorithm.dbscan:
           // DBSCAN needs epsilon and minPoints tuned to get close to target
           // Adjust epsilon based on point density to get closer to target count
-          double pointDensity = points.length / (bboxSize * bboxSize);
+          double pointDensity = points.length / (targetBoxSize * targetBoxSize);
           double adjustedEpsilon = minDistanceMeters * sqrt(targetCount / max(1.0, pointDensity));
           
           final dbscan = DBSCANCluster(
@@ -397,6 +376,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               });
               
               await DbHelper().emptyTable(DbHelper.pois);
+              await DbHelper().emptyTable(DbHelper.cells);
               
               setState(() {
                 _markers = {};

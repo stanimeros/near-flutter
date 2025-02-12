@@ -10,7 +10,7 @@ import 'package:http/http.dart' as http;
 
 class DbHelper {
   static late GeopackageDb db;
-  static const double gridSize = 0.0025;
+  static const double gridSize = 0.01;
   static String dbFilename = 'points.gpkg';
   static TableName pois = TableName("pois", schemaSupported: false);
   static TableName cells = TableName("cells", schemaSupported: false);

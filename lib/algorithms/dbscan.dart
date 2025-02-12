@@ -5,14 +5,14 @@ class DBSCANCluster {
   final double epsilon;
   final int minPoints;
   final int targetCount;
-  late DBSCAN _dbscan;
+  late DBSCAN dbscan;
   
   DBSCANCluster({
     required this.epsilon,
     required this.minPoints,
     required this.targetCount,
   }) {
-    _dbscan = DBSCAN(
+    dbscan = DBSCAN(
       epsilon: epsilon,
       minPoints: minPoints,
     );
@@ -29,8 +29,8 @@ class DBSCANCluster {
     ]).toList();
 
     // Run DBSCAN
-    List<List<int>> clusters = _dbscan.run(dataset);
-    List<int> noise = _dbscan.noise;
+    List<List<int>> clusters = dbscan.run(dataset);
+    List<int> noise = dbscan.noise;
     
     // Collect all points (from clusters and noise)
     List<int> allIndices = [...noise];
@@ -51,10 +51,6 @@ class DBSCANCluster {
       point.getY()
     ]).toList();
 
-    return _dbscan.run(dataset);
-  }
-
-  List<int> getNoise() {
-    return _dbscan.noise;
+    return dbscan.run(dataset);
   }
 }
