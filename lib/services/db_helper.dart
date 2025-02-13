@@ -10,7 +10,7 @@ import 'package:http/http.dart' as http;
 
 class DbHelper {
   static late GeopackageDb db;
-  static const double gridSize = 0.01;
+  static const double gridSize = 0.0025;
   static String dbFilename = 'points.gpkg';
   static TableName pois = TableName("pois", schemaSupported: false);
   static TableName cells = TableName("cells", schemaSupported: false);
@@ -208,15 +208,14 @@ class DbHelper {
   }
 
   Future<void> downloadPointsFromOSM(double minLon, double minLat, double maxLon, double maxLat) async {
-    String url = 'https://overpass-api.de/api/interpreter?data=[out:json];'
+    String api = 'https://overpass-api.de/api/interpreter?data=[out:json];'
       'node($minLat,$minLon,$maxLat,$maxLon);'
       'out;';
     
-    debugPrint('Downloading from: $url');
+    debugPrint('Downloading from: $api');
     final response = await http.get(
-      Uri.parse(url),
-      headers: {'User-Agent': 'Near App/1.0'}, // Add user agent
-    ).timeout(const Duration(seconds: 10));
+      Uri.parse(api),
+    ).timeout(const Duration(milliseconds: 5000));
 
     if (response.statusCode == 200) {
       debugPrint('Parsing points');
@@ -244,6 +243,7 @@ class DbHelper {
         debugPrint(e.toString());
       }
     } else {
+      debugPrint('Failed to download points: ${response.body}');
       throw Exception('Failed to download points: ${response.statusCode}');
     }
   }

@@ -616,22 +616,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.9.0"
-  k_means_cluster:
-    dependency: "direct main"
-    description:
-      name: k_means_cluster
-      sha256: "37a0d432fb95eaaf552c3155b9ed0d4508858276c0f0627f2b2af3c34481d1f3"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.3.0"
-  kmeans:
-    dependency: "direct main"
-    description:
-      name: kmeans
-      sha256: f0a62569a661d992e1f3a2fc27447b1058429115eb9c42f8976614fa8dfd45e9
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.0"
   leak_tracker:
     dependency: transitive
     description:
@@ -888,14 +872,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.3"
-  simple_cluster:
-    dependency: "direct main"
-    description:
-      name: simple_cluster
-      sha256: "64d6b7d60d641299ad8c3f012417c711532792c1bc61ac6a7f52b942cdba65da"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.3.0"
   sky_engine:
     dependency: transitive
     description: flutter
