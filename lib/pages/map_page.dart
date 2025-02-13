@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:dart_jts/dart_jts.dart' as jts;
@@ -40,7 +39,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   bool _isCameraMoving = false;
 
   static const double targetBoxSize = 50.0;
-  static const double metersPerDegree = 111000.0; // At equator
 
   @override
   void initState() {
@@ -75,6 +73,14 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
           initialPosition = LatLng(pos.latitude, pos.longitude);
           isLoadingLocation = false;
         });
+
+        // Once map is created and location is known, center the box
+        if (_mapController != null) {
+          _mapController!.animateCamera(
+            CameraUpdate.newLatLng(initialPosition!)
+          );
+          _loadPOIs(); // This will create the centered box
+        }
       } else {
         throw Exception('Could not get location');
       }
@@ -95,7 +101,11 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     try {
       // Get current center for 50m box
       LatLngBounds bounds = await _mapController!.getVisibleRegion();
-      jts.Envelope searchBox = await DbHelper().createBoundingBox(bounds.southwest.longitude, bounds.southwest.latitude, targetBoxSize);
+      jts.Envelope searchBox = await DbHelper().createBoundingBox(
+        (bounds.northeast.longitude + bounds.southwest.longitude) / 2, 
+        (bounds.northeast.latitude + bounds.southwest.latitude) / 2, 
+        targetBoxSize
+      );
 
       debugPrint('Getting cells from DB...');
       // Get cells from DB directly using SQL for better performance
@@ -172,7 +182,14 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   void _onMapCreated(GoogleMapController controller) {
     _mapController = controller;
     isMapCreated = true;
-    _updateCellsVisualization(); // Show cells when map is ready
+    
+    // If we already have location, center the map and box
+    if (initialPosition != null) {
+      controller.animateCamera(
+        CameraUpdate.newLatLng(initialPosition!)
+      );
+      _loadPOIs();
+    }
   }
 
   void _onCameraMove(CameraPosition position) {
@@ -196,9 +213,12 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     });
 
     try {
-      // Get current center and bounds
       LatLngBounds bounds = await _mapController!.getVisibleRegion();
-      jts.Envelope searchBox = await DbHelper().createBoundingBox(bounds.southwest.longitude, bounds.southwest.latitude, targetBoxSize);
+      jts.Envelope searchBox = await DbHelper().createBoundingBox(
+        (bounds.northeast.longitude + bounds.southwest.longitude) / 2, 
+        (bounds.northeast.latitude + bounds.southwest.latitude) / 2, 
+        targetBoxSize
+      );
 
       // First try to get points from DB
       final zoom = await _mapController!.getZoomLevel();
@@ -206,18 +226,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
       // Dynamic clustering parameters
       int pointCount = points.length;
-      debugPrint('Found $pointCount points');
-
-      // Calculate target markers based on zoom
-      double zoomFactor = (zoom - 15) / 5;  // 0.0 at zoom 15, 1.0 at zoom 20
-      zoomFactor = max(0.0, min(1.0, zoomFactor));  
-      int targetCount = (5 + (10 * zoomFactor)).round();  // 5 at zoom 15, 15 at zoom 20
-      targetCount = min(pointCount, targetCount);
-
-      // Minimum distance decreases with zoom
-      double minDistanceMeters = targetBoxSize / (5 + (10 * zoomFactor));  // 15m at zoom 20, 50m at zoom 15
-
-      debugPrint('Target: $targetCount points, min distance: ${minDistanceMeters.round()}m');
+      int targetCount = ((zoom - 15) / 5 * pointCount).toInt();  // Gradually increase POIs
+      debugPrint('Target count: $targetCount / $pointCount');
 
       List<jts.Point> filteredPoints = [];
       switch (selectedAlgorithm) {
@@ -241,33 +251,27 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
           final kmeans = KMeansCluster2(k: targetCount);
           filteredPoints = kmeans.filterPOIs(points);
           break;
-          
+
         case ClusteringAlgorithm.dbscan:
           // DBSCAN needs epsilon and minPoints tuned to get close to target
           // Adjust epsilon based on point density to get closer to target count
-          double pointDensity = points.length / (targetBoxSize * targetBoxSize);
-          double adjustedEpsilon = minDistanceMeters * sqrt(targetCount / max(1.0, pointDensity));
           
           final dbscan = DBSCANCluster(
-            epsilon: adjustedEpsilon / metersPerDegree,
-            minPoints: max(2, min(4, points.length ~/ (targetCount * 2))),
-            targetCount: targetCount,
+            epsilon: 100 / (zoom * zoom),
+            minPoints: targetCount
           );
           filteredPoints = dbscan.filterPOIs(points);
           break;
           
         case ClusteringAlgorithm.hierarchical:
           // Hierarchical needs slightly more clusters to get close to target
-          final adjustedClusters = targetCount;
           final hierarchical = HierarchicalCluster(
-            minClusters: adjustedClusters,
+            minCluster: targetCount,
             linkageType: LINKAGE.AVERAGE,
           );
           filteredPoints = hierarchical.filterPOIs(points);
           break;
       }
-
-      debugPrint('Found ${points.length} points, target: $targetCount, filtered to: ${filteredPoints.length}');
 
       // Create markers for filtered points
       for (var point in filteredPoints) {

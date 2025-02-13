@@ -4,13 +4,11 @@ import 'package:simple_cluster/simple_cluster.dart';
 class DBSCANCluster {
   final double epsilon;
   final int minPoints;
-  final int targetCount;
   late DBSCAN dbscan;
   
   DBSCANCluster({
     required this.epsilon,
     required this.minPoints,
-    required this.targetCount,
   }) {
     dbscan = DBSCAN(
       epsilon: epsilon,
@@ -20,7 +18,6 @@ class DBSCANCluster {
 
   List<Point> filterPOIs(List<Point> points) {
     if (points.isEmpty) return [];
-    if (points.length <= targetCount) return points;
 
     // Convert Points to List<List<double>> format
     List<List<double>> dataset = points.map((point) => [
@@ -40,17 +37,8 @@ class DBSCANCluster {
 
     // Shuffle and take exactly targetCount points
     allIndices.shuffle();
-    return allIndices.take(targetCount)
+    return allIndices.take(minPoints)
       .map((i) => points[i])
       .toList();
-  }
-
-  List<List<int>> getClusters(List<Point> points) {
-    List<List<double>> dataset = points.map((point) => [
-      point.getX(),
-      point.getY()
-    ]).toList();
-
-    return dbscan.run(dataset);
   }
 }
