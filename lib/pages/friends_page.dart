@@ -1,38 +1,67 @@
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_near/services/firestore.dart';
+import 'package:flutter_near/services/location.dart';
 import 'package:flutter_near/models/near_user.dart';
+import 'package:flutter_near/services/Spatialite.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
-import 'package:flutter_near/widgets/messenger.dart';
 import 'package:flutter_near/widgets/profile_picture.dart';
-import 'package:lucide_icons/lucide_icons.dart';
-import 'package:flutter_near/services/user_provider.dart';
-import 'package:provider/provider.dart';
+import 'package:dart_jts/dart_jts.dart' as jts;
+import 'package:flutter_near/pages/friend_page.dart';
 
 class FriendsPage extends StatefulWidget {
-  const FriendsPage({super.key});
+  final NearUser currentUser;
+
+  const FriendsPage({
+    super.key,
+    required this.currentUser,
+  });
 
   @override
   State<FriendsPage> createState() => _FriendsPageState();
 }
 
 class _FriendsPageState extends State<FriendsPage> {
-  NearUser? nearUser;
+  bool isLoading = false;
   Future<List<NearUser>>? futureList;
 
   @override
   void initState() {
     super.initState();
-    final userProvider = context.read<UserProvider>();
-    nearUser = userProvider.nearUser;
-    futureList = FirestoreService().getFriends(nearUser!.uid);
+    fetchData();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+    futureList = null;
+  }
+
+  void fetchData() async {
+    setState(() {
+      isLoading = true;
+    });
+
+    GeoPoint? pos = await LocationService().getCurrentPosition();
+    if (pos != null) {
+      jts.Point random = await Spatialite().getRandomKNN(
+        widget.currentUser.kAnonymity,
+        pos.longitude,
+        pos.latitude,
+        50
+      );
+      await FirestoreService().setLocation(widget.currentUser.uid, random.getX(), random.getY());
+    }
+
+    setState(() {
+      isLoading = false;
+      futureList = FirestoreService().getFriends(widget.currentUser.uid);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (nearUser == null) {
-      return const Center(child: Text('No user data available'));
-    }
-
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -45,56 +74,61 @@ class _FriendsPageState extends State<FriendsPage> {
               ),
             ],
           ),
+          const SizedBox(height: 16),
           Expanded(
-            child: FutureBuilder(
-              future: futureList,
-              builder: (context, snapshot) {
-                if (snapshot.hasData) {
-                  List<NearUser> friends = snapshot.data!;
-                  if (friends.isNotEmpty) {
-                    return ListView.builder(
-                      itemCount: friends.length,
-                      itemBuilder: (context, index) {
-                        return Dismissible(
-                          key: UniqueKey(),
-                          background: Container(
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.error,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const ListTile(
-                              trailing: Icon(LucideIcons.delete),
-                            ),
-                          ),
-                          direction: DismissDirection.endToStart,
-                          onDismissed: (direction) {
-                            FirestoreService().rejectRequest(nearUser!.uid, friends[index].uid);
-                            FirestoreService().rejectRequest(friends[index].uid, nearUser!.uid);
-                            setState(() {
-                              friends.removeAt(index);
-                            });
+            child: widget.currentUser.location != null
+                ? FutureBuilder(
+                    future: futureList,
+                    builder: (context, snapshot) {
+                      if (snapshot.hasData) {
+                        List<NearUser> friends = snapshot.data!;
+                        List<NearUser> oFriends = widget.currentUser
+                            .getUsersOrderedByLocation(friends);
+
+                        if (!oFriends.any((friend) => 
+                            friend.uid == widget.currentUser.uid)) {
+                          oFriends.insert(0, widget.currentUser);
+                        }
+
+                        return ListView.builder(
+                          itemCount: oFriends.length,
+                          itemBuilder: (context, index) {
+                            return ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: ProfilePicture(
+                                user: oFriends[index],
+                                size: 45,
+                                color: Theme.of(context)
+                                    .textTheme
+                                    .bodyLarge
+                                    ?.color ?? 
+                                    Colors.black,
+                                backgroundColor: Theme.of(context)
+                                    .colorScheme
+                                    .surface,
+                              ),
+                              title: Text(oFriends[index].username),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => FriendPage(
+                                      friend: oFriends[index],
+                                      currentUser: widget.currentUser,
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
                           },
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.all(4),
-                            leading: ProfilePicture(
-                              user: friends[index],
-                              size: 40,
-                              color: Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black,
-                              backgroundColor: Theme.of(context).colorScheme.surface,
-                            ),
-                            title: Text(friends[index].username),
-                          ),
                         );
-                      },
-                    );
-                  }
-                  return const Messenger(message: 'You don\'t have any friends yet');
-                } else if (snapshot.hasError) {
-                  return Messenger(message: 'Error ${snapshot.error}');
-                }
-                return const CustomLoader();
-              },
-            ),
+                      } else if (snapshot.hasError) {
+                        return Text('Error: ${snapshot.error}');
+                      }
+                      return const CustomLoader();
+                    },
+                  )
+                : const Text('Please share your location'),
           ),
         ],
       ),

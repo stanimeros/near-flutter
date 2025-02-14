@@ -1,11 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_near/pages/friends_page.dart';
 import 'package:flutter_near/widgets/bottom_nav_bar.dart';
 import 'package:flutter_near/widgets/custom_theme.dart';
 import 'package:flutter_near/firebase_options.dart';
-import 'package:flutter_near/pages/feed_page.dart';
-import 'package:flutter_near/pages/friends_page.dart';
 import 'package:flutter_near/pages/login_page.dart';
 import 'package:flutter_near/pages/profile_page.dart';
 import 'package:flutter_near/pages/requests_page.dart';
@@ -36,11 +35,33 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> {
-  PageController pageController = PageController(initialPage: 2);
+  late PageController pageController;
+  final ValueNotifier<int> _currentIndex = ValueNotifier<int>(0);
 
   @override
   void initState() {
     super.initState();
+    pageController = PageController(initialPage: 0);
+    pageController.addListener(_handlePageChange);
+  }
+
+  @override
+  void dispose() {
+    pageController.removeListener(_handlePageChange);
+    pageController.dispose();
+    _currentIndex.dispose();
+    super.dispose();
+  }
+
+  void _handlePageChange() {
+    if (pageController.hasClients && pageController.page != null) {
+      _currentIndex.value = pageController.page!.round();
+    }
+  }
+
+  void changePage(int index) {
+    pageController.jumpToPage(index);
+    _currentIndex.value = index;
   }
 
   @override
@@ -57,30 +78,37 @@ class _MainAppState extends State<MainApp> {
               child: Consumer<UserProvider>(
                 builder: (context, userProvider, _) {
                   if (userProvider.isLoading) {
-                    return const Scaffold(
-                      body: CustomLoader(),
-                    );
+                    return const Scaffold(body: CustomLoader());
                   }
 
                   if (userProvider.nearUser == null) {
                     FirebaseAuth.instance.signOut();
-                    return const Scaffold(
-                      body: CustomLoader(),
-                    );
+                    return const Scaffold(body: CustomLoader());
                   }
 
                   return Scaffold(
                     resizeToAvoidBottomInset: false,
                     extendBodyBehindAppBar: false,
-                    bottomNavigationBar: BottomNavBar(changePage: changePage, currentIndex: pageController.page!.toInt()),
+                    bottomNavigationBar: ValueListenableBuilder<int>(
+                      valueListenable: _currentIndex,
+                      builder: (context, currentIndex, _) {
+                        return BottomNavBar(
+                          changePage: changePage,
+                          currentIndex: currentIndex,
+                        );
+                      },
+                    ),
                     body: SafeArea(
                       child: PageView(
                         physics: const NeverScrollableScrollPhysics(),
                         controller: pageController,
                         children: [
-                          const FeedPage(),
-                          const FriendsPage(),
-                          const MapPage(),
+                          FriendsPage(
+                            currentUser: userProvider.nearUser!,
+                          ),
+                          MapPage(
+                            currentUser: userProvider.nearUser,
+                          ),
                           const RequestsPage(),
                           const ProfilePage(),
                         ],
@@ -96,11 +124,5 @@ class _MainAppState extends State<MainApp> {
         },
       ),
     );
-  }
-
-  void changePage(index) {
-    setState(() {
-      pageController.jumpToPage(index);
-    });
   }
 }

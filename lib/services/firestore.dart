@@ -4,6 +4,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_near/models/near_user.dart';
+import 'package:flutter_near/models/meeting.dart';
 
 class FirestoreService {
   FirebaseFirestore firestore = FirebaseFirestore.instance;
@@ -216,8 +217,6 @@ class FirestoreService {
     }
   }
 
-
-
   Future<void> setProfilePicture(String uid, String path) async {
     try{
       String url = '';
@@ -240,27 +239,21 @@ class FirestoreService {
     }
   }
 
-  Future<void> deleteAccount(String uid) async {
-    // Delete user requests
-    QuerySnapshot requestsSnapshot = await firestore
-      .collection('requests')
-      .where('uid', isEqualTo: uid)
-      .get();
+  Stream<List<Meeting>> getMeetingsWithFriend(String userId, String friendId) {
+    return FirebaseFirestore.instance
+        .collection('meetings')
+        .where('senderId', whereIn: [userId, friendId])
+        .where('receiverId', whereIn: [userId, friendId])
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => Meeting.fromFirestore(doc))
+            .toList());
+  }
 
-    for (var doc in requestsSnapshot.docs) {
-      await doc.reference.delete();
-    }
-
-    requestsSnapshot = await firestore
-      .collection('requests')
-      .where('fuid', isEqualTo: uid)
-      .get();
-
-    for (var doc in requestsSnapshot.docs) {
-      await doc.reference.delete();
-    }
-
-    DocumentReference userDocRef = firestore.collection('users').doc(uid);
-    await userDocRef.delete();
+  Future<void> updateMeetingStatus(String meetingId, MeetingStatus newStatus) {
+    return FirebaseFirestore.instance
+        .collection('meetings')
+        .doc(meetingId)
+        .update({'status': newStatus.toString().split('.').last});
   }
 }

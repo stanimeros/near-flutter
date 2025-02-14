@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
-class BottomNavBar extends StatelessWidget {
+class BottomNavBar extends StatefulWidget {
   final Function changePage;
   final int currentIndex;
 
@@ -12,10 +12,15 @@ class BottomNavBar extends StatelessWidget {
   });
 
   @override
+  State<BottomNavBar> createState() => _BottomNavBarState();
+}
+
+class _BottomNavBarState extends State<BottomNavBar> {
+  @override
   Widget build(BuildContext context) {
     return NavigationBar(
-      selectedIndex: currentIndex,
-      onDestinationSelected: (index) => changePage(index),
+      selectedIndex: widget.currentIndex,
+      onDestinationSelected: (index) => widget.changePage(index),
       destinations: const [
         NavigationDestination(
           icon: Icon(LucideIcons.users),

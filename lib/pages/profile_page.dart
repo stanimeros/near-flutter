@@ -246,32 +246,6 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ),
           const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () async {
-              AlertDialog popUp = PopUp(
-                funBtn1: () async{
-                  Navigator.pop(context);
-                  await FirestoreService().deleteAccount(nearUser.uid);
-                  FirebaseAuth.instance.signOut();
-                },
-                funBtn2: () {
-                  Navigator.pop(context);
-                },
-              );
-              showDialog(
-                context: context,
-                builder: (BuildContext context) => popUp,
-              );
-            },
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text('Delete your data'),
-                SizedBox(width: 8),
-                Icon(LucideIcons.trash, size: 18)
-              ],
-            ),
-          ),
         ],
       ),
     );

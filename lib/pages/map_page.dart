@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_near/services/user_provider.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:dart_jts/dart_jts.dart' as jts;
 import 'package:flutter_near/services/location.dart';
@@ -7,8 +6,9 @@ import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_near/models/meeting.dart';
 import 'package:flutter_near/models/near_user.dart';
-import 'package:provider/provider.dart';
 import 'package:flutter_near/services/Spatialite.dart';
+import 'package:flutter_near/widgets/meeting_confirmation_sheet.dart';
+import 'dart:async';
 
 enum MapMode {
   normal,
@@ -18,11 +18,13 @@ enum MapMode {
 class MapPage extends StatefulWidget {
   final MapMode mode;
   final NearUser? friend;
+  final NearUser? currentUser;
 
   const MapPage({
     super.key,
     this.mode = MapMode.normal,
     this.friend,
+    this.currentUser,
   });
 
   @override
@@ -39,6 +41,10 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   String? errorMessage;
   bool _isCameraMoving = false;
   jts.Point? _selectedPOI;
+  bool _isLoadingPOIs = false;
+  Timer? _debounceTimer;
+  final Set<String> _visitedCells = {};  // Track cells we've already loaded
+  static const int poisPerCell = 50;   // Show 50 POIs per cell
 
   @override
   void initState() {
@@ -51,6 +57,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   void dispose() {
     _mapController?.dispose();
     _mapController = null;
+    _debounceTimer?.cancel();
     super.dispose();
   }
 
@@ -108,7 +115,11 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   }
 
   void _onCameraMove(CameraPosition position) {
-    _isCameraMoving = true;
+    // Debounce camera movement to prevent too many database queries
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+      _loadPOIsInViewport();
+    });
   }
 
   void _onCameraIdle() {
@@ -145,6 +156,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
             markerId: MarkerId('${point.getX()}-${point.getY()}'),
             position: LatLng(point.getY(), point.getX()),
             icon: BitmapDescriptor.defaultMarker,
+            onTap: () => _onMarkerTapped(point),
           ),
         );
       }
@@ -157,6 +169,89 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         });
       }
     }
+  }
+
+  Future<void> _loadPOIsInViewport() async {
+    if (_mapController == null || _isLoadingPOIs) return;
+
+    final LatLngBounds visibleBounds = await _mapController!.getVisibleRegion();
+    final center = LatLng(
+      (visibleBounds.southwest.latitude + visibleBounds.northeast.latitude) / 2,
+      (visibleBounds.southwest.longitude + visibleBounds.northeast.longitude) / 2
+    );
+    
+    final currentCellKey = _getCellKey(center.longitude, center.latitude);
+
+    if (_visitedCells.contains(currentCellKey) && _markers.isNotEmpty) {
+      return;
+    }
+
+    setState(() => _isLoadingPOIs = true);
+
+    try {
+      debugPrint('Loading POIs for cell: $currentCellKey');
+
+      final cellX = (center.longitude / Spatialite.gridSize).floor();
+      final cellY = (center.latitude / Spatialite.gridSize).floor();
+      
+      // Create cell bounds with proper coordinate order
+      final cellBounds = jts.Envelope(
+        cellX * Spatialite.gridSize,                // minX (west longitude)
+        (cellX + 1) * Spatialite.gridSize,         // maxX (east longitude)
+        cellY * Spatialite.gridSize,               // minY (south latitude)
+        (cellY + 1) * Spatialite.gridSize          // maxY (north latitude)
+      );
+
+      debugPrint('Cell bounds: ${cellBounds.toString()}');
+      final points = await Spatialite().getPointsInBoundingBox(cellBounds);
+      final shuffledPoints = List.from(points)..shuffle();
+      final filteredPoints = shuffledPoints.take(poisPerCell).toList();
+
+      if (mounted) {
+        setState(() {
+          _markers.clear();
+          for (var point in filteredPoints) {
+            _markers.add(
+              Marker(
+                markerId: MarkerId('${point.getX()}-${point.getY()}'),
+                position: LatLng(point.getY(), point.getX()),  // Note: point.getY() is latitude
+                icon: BitmapDescriptor.defaultMarker,
+                onTap: () => _onMarkerTapped(point),
+              ),
+            );
+          }
+          _visitedCells.add(currentCellKey);
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading POIs: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingPOIs = false);
+      }
+    }
+  }
+
+  String _getCellKey(double lon, double lat) {
+    // Use same grid size as Spatialite (0.005)
+    final cellX = (lon / Spatialite.gridSize).floor();
+    final cellY = (lat / Spatialite.gridSize).floor();
+    return '$cellX,$cellY';
+  }
+
+  void _onMarkerTapped(jts.Point point) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => MeetingConfirmationSheet(
+        point: point,
+        onConfirm: () {
+          setState(() => _selectedPOI = point);
+          _suggestMeeting();
+        },
+      ),
+    );
   }
 
   @override
@@ -285,14 +380,14 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   }
 
   Future<void> _suggestMeeting() async {
-    if (_selectedPOI == null || widget.friend == null) return;
+    if (_selectedPOI == null || widget.friend == null || widget.currentUser == null) return;
 
     final meeting = Meeting(
       id: '', // Firestore will generate
-      senderId: context.read<UserProvider>().nearUser!.uid,
+      senderId: widget.currentUser!.uid,
       receiverId: widget.friend!.uid,
       location: GeoPoint(_selectedPOI!.getY(), _selectedPOI!.getX()),
-      time: DateTime.now().add(const Duration(days: 1)), // Default to tomorrow
+      time: DateTime.now().add(const Duration(days: 1)),
       status: MeetingStatus.pending,
     );
 
