@@ -222,6 +222,7 @@ class Spatialite {
       final points = await compute(parsePointsFromJSON, response.body);
 
       debugPrint('Got ${points.length} points');
+      if (points.isEmpty) return;
       GeometryFactory gf = GeometryFactory.defaultPrecision();
 
       try {

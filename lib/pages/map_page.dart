@@ -41,10 +41,10 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   String? errorMessage;
   bool _isCameraMoving = false;
   jts.Point? _selectedPOI;
-  bool _isLoadingPOIs = false;
   Timer? _debounceTimer;
-  final Set<String> _visitedCells = {};  // Track cells we've already loaded
-  static const int poisPerCell = 50;   // Show 50 POIs per cell
+  final Map<String, Set<Marker>> _cellMarkers = {}; // Track markers per cell
+  final Set<Polygon> _cellPolygons = {};  // Add this for cell visualization
+  static const int poisPerCell = 5;   // Show 50 POIs per cell
 
   @override
   void initState() {
@@ -172,71 +172,98 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   }
 
   Future<void> _loadPOIsInViewport() async {
-    if (_mapController == null || _isLoadingPOIs) return;
+    if (_mapController == null) return;
 
     final LatLngBounds visibleBounds = await _mapController!.getVisibleRegion();
-    final center = LatLng(
-      (visibleBounds.southwest.latitude + visibleBounds.northeast.latitude) / 2,
-      (visibleBounds.southwest.longitude + visibleBounds.northeast.longitude) / 2
-    );
     
-    final currentCellKey = _getCellKey(center.longitude, center.latitude);
+    // Add blue polygon for viewport
+    final viewportPolygon = Polygon(
+      polygonId: const PolygonId('viewport'),
+      points: [
+        visibleBounds.southwest,
+        LatLng(visibleBounds.southwest.latitude, visibleBounds.northeast.longitude),
+        visibleBounds.northeast,
+        LatLng(visibleBounds.northeast.latitude, visibleBounds.southwest.longitude),
+      ],
+      strokeColor: Colors.blue,
+      strokeWidth: 2,
+      fillColor: Colors.blue.withAlpha(50),
+    );
 
-    if (_visitedCells.contains(currentCellKey) && _markers.isNotEmpty) {
-      return;
-    }
+    // Calculate all cells that intersect with viewport
+    final swCellX = (visibleBounds.southwest.longitude / Spatialite.gridSize).floor();
+    final swCellY = (visibleBounds.southwest.latitude / Spatialite.gridSize).floor();
+    final neCellX = (visibleBounds.northeast.longitude / Spatialite.gridSize).floor();
+    final neCellY = (visibleBounds.northeast.latitude / Spatialite.gridSize).floor();
 
-    setState(() => _isLoadingPOIs = true);
+    debugPrint('Viewport covers cells: ($swCellX,$swCellY) to ($neCellX,$neCellY)');
 
+    setState(() {
+      // Update viewport polygon
+      _cellPolygons.removeWhere((p) => p.polygonId == const PolygonId('viewport'));
+      _cellPolygons.add(viewportPolygon);
+
+      // Add red polygons for all cells in viewport
+      for (int x = swCellX; x <= neCellX; x++) {
+        for (int y = swCellY; y <= neCellY; y++) {
+          final cellKey = '$x,$y';
+          final cellPolygon = Polygon(
+            polygonId: PolygonId('cell_$cellKey'),
+            points: [
+              LatLng(y * Spatialite.gridSize, x * Spatialite.gridSize),
+              LatLng(y * Spatialite.gridSize, (x + 1) * Spatialite.gridSize),
+              LatLng((y + 1) * Spatialite.gridSize, (x + 1) * Spatialite.gridSize),
+              LatLng((y + 1) * Spatialite.gridSize, x * Spatialite.gridSize),
+            ],
+            strokeColor: Colors.red,
+            strokeWidth: 2,
+            fillColor: Colors.red.withAlpha(100),
+          );
+          _cellPolygons.add(cellPolygon);
+
+          // Load POIs for this cell if not already loaded
+          if (!_cellMarkers.containsKey(cellKey)) {
+            _loadPOIsForCell(x, y, cellKey);
+          }
+        }
+      }
+    });
+  }
+
+  Future<void> _loadPOIsForCell(int cellX, int cellY, String cellKey) async {
     try {
-      debugPrint('Loading POIs for cell: $currentCellKey');
-
-      final cellX = (center.longitude / Spatialite.gridSize).floor();
-      final cellY = (center.latitude / Spatialite.gridSize).floor();
-      
-      // Create cell bounds with proper coordinate order
       final cellBounds = jts.Envelope(
-        cellX * Spatialite.gridSize,                // minX (west longitude)
-        (cellX + 1) * Spatialite.gridSize,         // maxX (east longitude)
-        cellY * Spatialite.gridSize,               // minY (south latitude)
-        (cellY + 1) * Spatialite.gridSize          // maxY (north latitude)
+        cellX * Spatialite.gridSize,
+        (cellX + 1) * Spatialite.gridSize,
+        cellY * Spatialite.gridSize,
+        (cellY + 1) * Spatialite.gridSize
       );
 
-      debugPrint('Cell bounds: ${cellBounds.toString()}');
       final points = await Spatialite().getPointsInBoundingBox(cellBounds);
       final shuffledPoints = List.from(points)..shuffle();
       final filteredPoints = shuffledPoints.take(poisPerCell).toList();
 
       if (mounted) {
+        final cellMarkers = <Marker>{};
+        for (var point in filteredPoints) {
+          cellMarkers.add(
+            Marker(
+              markerId: MarkerId('${point.getX()}-${point.getY()}'),
+              position: LatLng(point.getY(), point.getX()),
+              icon: BitmapDescriptor.defaultMarker,
+              onTap: () => _onMarkerTapped(point),
+            ),
+          );
+        }
+
         setState(() {
-          _markers.clear();
-          for (var point in filteredPoints) {
-            _markers.add(
-              Marker(
-                markerId: MarkerId('${point.getX()}-${point.getY()}'),
-                position: LatLng(point.getY(), point.getX()),  // Note: point.getY() is latitude
-                icon: BitmapDescriptor.defaultMarker,
-                onTap: () => _onMarkerTapped(point),
-              ),
-            );
-          }
-          _visitedCells.add(currentCellKey);
+          _cellMarkers[cellKey] = cellMarkers;
+          _markers = _cellMarkers.values.expand((markers) => markers).toSet();
         });
       }
     } catch (e) {
-      debugPrint('Error loading POIs: $e');
-    } finally {
-      if (mounted) {
-        setState(() => _isLoadingPOIs = false);
-      }
+      debugPrint('Error loading POIs for cell $cellKey: $e');
     }
-  }
-
-  String _getCellKey(double lon, double lat) {
-    // Use same grid size as Spatialite (0.005)
-    final cellX = (lon / Spatialite.gridSize).floor();
-    final cellY = (lat / Spatialite.gridSize).floor();
-    return '$cellX,$cellY';
   }
 
   void _onMarkerTapped(jts.Point point) {
@@ -318,6 +345,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
                     myLocationEnabled: true,
                     myLocationButtonEnabled: true,
                     markers: _markers,
+                    polygons: _cellPolygons,
                     onCameraMove: _onCameraMove,
                     onCameraIdle: _onCameraIdle,
                   ),
@@ -366,6 +394,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     
     setState(() {
       _markers = {};
+      _cellMarkers.clear();
+      _cellPolygons.clear();
       isLoadingPOIs = false;
     });
 
