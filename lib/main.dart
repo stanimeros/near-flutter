@@ -3,7 +3,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_near/widgets/bottom_nav_bar.dart';
 import 'package:flutter_near/widgets/custom_theme.dart';
-import 'package:flutter_near/services/db_helper.dart';
 import 'package:flutter_near/firebase_options.dart';
 import 'package:flutter_near/pages/feed_page.dart';
 import 'package:flutter_near/pages/friends_page.dart';
@@ -14,14 +13,14 @@ import 'package:flutter_near/pages/map_page.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_near/services/user_provider.dart';
-
+import 'package:flutter_near/services/Spatialite.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   // Initialize both databases
-  await DbHelper().openDbFile();
-  await DbHelper().createCellsTable();
-  await DbHelper().createSpatialTable();
+  await Spatialite().openDbFile();
+  await Spatialite().createCellsTable();
+  await Spatialite().createSpatialTable();
   
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
@@ -73,7 +72,7 @@ class _MainAppState extends State<MainApp> {
                   return Scaffold(
                     resizeToAvoidBottomInset: false,
                     extendBodyBehindAppBar: false,
-                    bottomNavigationBar: BottomNavBar(changePage: changePage),
+                    bottomNavigationBar: BottomNavBar(changePage: changePage, currentIndex: pageController.page!.toInt()),
                     body: SafeArea(
                       child: PageView(
                         physics: const NeverScrollableScrollPhysics(),

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_near/services/firestore.dart';
-import 'package:flutter_near/services/near_user.dart';
+import 'package:flutter_near/models/near_user.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:flutter_near/widgets/messenger.dart';
 import 'package:flutter_near/widgets/profile_picture.dart';

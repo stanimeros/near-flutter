@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_near/services/near_user.dart';
+import 'package:flutter_near/models/near_user.dart';
 import 'package:flutter_near/widgets/profile_picture.dart';
 import 'package:image_picker/image_picker.dart';
 

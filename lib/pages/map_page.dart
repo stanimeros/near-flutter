@@ -1,13 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_near/services/user_provider.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:dart_jts/dart_jts.dart' as jts;
-import 'package:flutter_near/services/db_helper.dart';
 import 'package:flutter_near/services/location.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_near/models/meeting.dart';
+import 'package:flutter_near/models/near_user.dart';
+import 'package:provider/provider.dart';
+import 'package:flutter_near/services/Spatialite.dart';
+
+enum MapMode {
+  normal,
+  suggestMeeting,
+}
 
 class MapPage extends StatefulWidget {
-  const MapPage({super.key});
+  final MapMode mode;
+  final NearUser? friend;
+
+  const MapPage({
+    super.key,
+    this.mode = MapMode.normal,
+    this.friend,
+  });
 
   @override
   State<MapPage> createState() => _MapPageState();
@@ -22,6 +38,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   LatLng? initialPosition;
   String? errorMessage;
   bool _isCameraMoving = false;
+  jts.Point? _selectedPOI;
 
   @override
   void initState() {
@@ -111,7 +128,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
     try {
       LatLngBounds bounds = await _mapController!.getVisibleRegion();
-      jts.Envelope searchBox = await DbHelper().createBoundingBox(
+      jts.Envelope searchBox = await Spatialite().createBoundingBox(
         (bounds.northeast.longitude + bounds.southwest.longitude) / 2, 
         (bounds.northeast.latitude + bounds.southwest.latitude) / 2, 
         100
@@ -119,7 +136,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
       // First try to get points from DB
       // final zoom = await _mapController!.getZoomLevel();
-      List<jts.Point> points = await DbHelper().getPointsInBoundingBox(searchBox);
+      List<jts.Point> points = await Spatialite().getPointsInBoundingBox(searchBox);
 
       // Create markers for filtered points
       for (var point in points) {
@@ -179,36 +196,16 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('POIs Map'),
+        title: Text(widget.mode == MapMode.suggestMeeting ? 
+          'Suggest Meeting with ${widget.friend?.username}' : 
+          'POIs Map'
+        ),
         actions: [
-          // Clear DB Button
-          IconButton(
-            icon: const Icon(Icons.delete_sweep),
-            tooltip: 'Clear all data',
-            onPressed: () async {
-              setState(() {
-                isLoadingPOIs = true;
-              });
-              
-              await DbHelper().emptyTable(DbHelper.pois);
-              await DbHelper().emptyTable(DbHelper.cells);
-              
-              setState(() {
-                _markers = {};
-                isLoadingPOIs = false;
-              });
-
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('All data cleared'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-              }
-            },
-          ),
-          const SizedBox(width: 16),
+          if (widget.mode == MapMode.normal)
+            IconButton(
+              icon: const Icon(Icons.delete_sweep),
+              onPressed: _clearData,
+            ),
         ],
       ),
       body: Stack(
@@ -249,8 +246,66 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
                 ),
               ),
             ),
+          if (widget.mode == MapMode.suggestMeeting && _selectedPOI != null)
+            Positioned(
+              bottom: 16,
+              left: 16,
+              right: 16,
+              child: ElevatedButton(
+                onPressed: _suggestMeeting,
+                child: const Text('Suggest Meeting Here'),
+              ),
+            ),
         ],
       ),
     );
+  }
+
+  Future<void> _clearData() async {
+    setState(() {
+      isLoadingPOIs = true;
+    });
+    
+    await Spatialite().emptyTable(Spatialite.pois);
+    await Spatialite().emptyTable(Spatialite.cells);
+    
+    setState(() {
+      _markers = {};
+      isLoadingPOIs = false;
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('All data cleared'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _suggestMeeting() async {
+    if (_selectedPOI == null || widget.friend == null) return;
+
+    final meeting = Meeting(
+      id: '', // Firestore will generate
+      senderId: context.read<UserProvider>().nearUser!.uid,
+      receiverId: widget.friend!.uid,
+      location: GeoPoint(_selectedPOI!.getY(), _selectedPOI!.getX()),
+      time: DateTime.now().add(const Duration(days: 1)), // Default to tomorrow
+      status: MeetingStatus.pending,
+    );
+
+    // Save to Firestore
+    await FirebaseFirestore.instance
+      .collection('meetings')
+      .add(meeting.toFirestore());
+
+    if (mounted) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Meeting suggestion sent!')),
+      );
+    }
   }
 } 

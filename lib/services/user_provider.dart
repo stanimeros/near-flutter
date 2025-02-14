@@ -1,7 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_near/services/firestore.dart';
-import 'package:flutter_near/services/near_user.dart';
+import 'package:flutter_near/models/near_user.dart';
 
 class UserProvider extends ChangeNotifier {
   NearUser? _nearUser;

@@ -2,9 +2,9 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_near/services/firestore.dart';
-import 'package:flutter_near/services/db_helper.dart';
 import 'package:flutter_near/services/location.dart';
-import 'package:flutter_near/services/near_user.dart';
+import 'package:flutter_near/models/near_user.dart';
+import 'package:flutter_near/services/Spatialite.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:flutter_near/widgets/messenger.dart';
 import 'package:flutter_near/widgets/profile_picture.dart';
@@ -44,14 +44,11 @@ class _FeedPageState extends State<FeedPage> {
       isLoading = true;
     });
 
-    // await DbHelper().emptyTable(DbHelper.pois);
-    // await DbHelper().emptyTable(DbHelper.keys);
-
     GeoPoint? pos = await LocationService().getCurrentPosition();
     if (pos != null) {
       debugPrint('Location: ${pos.latitude.toString()}, ${pos.longitude.toString()}');
 
-      jts.Point random = await DbHelper().getRandomKNN(nearUser.kAnonymity, pos.longitude, pos.latitude, 50);
+      jts.Point random = await Spatialite().getRandomKNN(nearUser.kAnonymity, pos.longitude, pos.latitude, 50);
       debugPrint('New Location: ${random.getY()}, ${random.getX()}');
       await FirestoreService().setLocation(nearUser.uid, random.getX(), random.getY());
     }
