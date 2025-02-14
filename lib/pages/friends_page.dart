@@ -9,6 +9,7 @@ import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:flutter_near/widgets/profile_picture.dart';
 import 'package:dart_jts/dart_jts.dart' as jts;
 import 'package:flutter_near/pages/friend_page.dart';
+import 'package:flutter_near/widgets/slide_page_route.dart';
 
 class FriendsPage extends StatefulWidget {
   final NearUser currentUser;
@@ -111,8 +112,8 @@ class _FriendsPageState extends State<FriendsPage> {
                               onTap: () {
                                 Navigator.push(
                                   context,
-                                  MaterialPageRoute(
-                                    builder: (context) => FriendPage(
+                                  SlidePageRoute(
+                                    page: FriendPage(
                                       friend: oFriends[index],
                                       currentUser: widget.currentUser,
                                     ),

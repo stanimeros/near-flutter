@@ -41,7 +41,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   String? errorMessage;
   bool _isCameraMoving = false;
   jts.Point? _selectedPOI;
-  Timer? _debounceTimer;
   final Map<String, Set<Marker>> _cellMarkers = {}; // Track markers per cell
   final Set<Polygon> _cellPolygons = {};  // Add this for cell visualization
   static const int poisPerCell = 5;   // Show 50 POIs per cell
@@ -57,7 +56,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   void dispose() {
     _mapController?.dispose();
     _mapController = null;
-    _debounceTimer?.cancel();
     super.dispose();
   }
 
@@ -86,7 +84,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
           _mapController!.animateCamera(
             CameraUpdate.newLatLng(initialPosition!)
           );
-          _loadPOIs(); // This will create the centered box
         }
       } else {
         throw Exception('Could not get location');
@@ -110,64 +107,17 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       controller.animateCamera(
         CameraUpdate.newLatLng(initialPosition!)
       );
-      _loadPOIs();
     }
   }
 
   void _onCameraMove(CameraPosition position) {
-    // Debounce camera movement to prevent too many database queries
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
-      _loadPOIsInViewport();
-    });
+    _isCameraMoving = true;
   }
 
   void _onCameraIdle() {
     if (_isCameraMoving) {
       _isCameraMoving = false;
-      _loadPOIs();
-    }
-  }
-
-  Future<void> _loadPOIs() async {
-    if (!isMapCreated || _mapController == null || !mounted) return;
-
-    setState(() {
-      isLoadingPOIs = true;
-      _markers = {};
-    });
-
-    try {
-      LatLngBounds bounds = await _mapController!.getVisibleRegion();
-      jts.Envelope searchBox = await Spatialite().createBoundingBox(
-        (bounds.northeast.longitude + bounds.southwest.longitude) / 2, 
-        (bounds.northeast.latitude + bounds.southwest.latitude) / 2, 
-        100
-      );
-
-      // First try to get points from DB
-      // final zoom = await _mapController!.getZoomLevel();
-      List<jts.Point> points = await Spatialite().getPointsInBoundingBox(searchBox);
-
-      // Create markers for filtered points
-      for (var point in points) {
-        _markers.add(
-          Marker(
-            markerId: MarkerId('${point.getX()}-${point.getY()}'),
-            position: LatLng(point.getY(), point.getX()),
-            icon: BitmapDescriptor.defaultMarker,
-            onTap: () => _onMarkerTapped(point),
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Error loading POIs: $e');
-    } finally {
-      if (mounted) {
-        setState(() {
-          isLoadingPOIs = false;
-        });
-      }
+      _loadPOIsInViewport();
     }
   }
 
@@ -367,16 +317,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
                     ),
                   ],
                 ),
-              ),
-            ),
-          if (widget.mode == MapMode.suggestMeeting && _selectedPOI != null)
-            Positioned(
-              bottom: 16,
-              left: 16,
-              right: 16,
-              child: ElevatedButton(
-                onPressed: _suggestMeeting,
-                child: const Text('Suggest Meeting Here'),
               ),
             ),
         ],
