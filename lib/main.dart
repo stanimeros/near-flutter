@@ -12,14 +12,14 @@ import 'package:flutter_near/pages/map_page.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_near/services/user_provider.dart';
-import 'package:flutter_near/services/Spatialite.dart';
+import 'package:flutter_near/services/spatial_db.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   // Initialize both databases
-  await Spatialite().openDbFile();
-  await Spatialite().createCellsTable();
-  await Spatialite().createSpatialTable();
+  await SpatialDb().openDbFile();
+  await SpatialDb().createCellsTable();
+  await SpatialDb().createSpatialTable();
   
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,

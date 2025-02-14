@@ -8,7 +8,7 @@ import 'package:dart_hydrologis_db/dart_hydrologis_db.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 
-class Spatialite {
+class SpatialDb {
   static late GeopackageDb db;
   static const double gridSize = 0.005;
   static String dbFilename = 'points.gpkg';

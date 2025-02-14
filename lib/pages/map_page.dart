@@ -6,7 +6,7 @@ import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_near/models/meeting.dart';
 import 'package:flutter_near/models/near_user.dart';
-import 'package:flutter_near/services/Spatialite.dart';
+import 'package:flutter_near/services/spatial_db.dart';
 import 'package:flutter_near/widgets/meeting_confirmation_sheet.dart';
 import 'dart:async';
 
@@ -141,10 +141,10 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     );
 
     // Calculate all cells that intersect with viewport
-    final swCellX = (visibleBounds.southwest.longitude / Spatialite.gridSize).floor();
-    final swCellY = (visibleBounds.southwest.latitude / Spatialite.gridSize).floor();
-    final neCellX = (visibleBounds.northeast.longitude / Spatialite.gridSize).floor();
-    final neCellY = (visibleBounds.northeast.latitude / Spatialite.gridSize).floor();
+    final swCellX = (visibleBounds.southwest.longitude / SpatialDb.gridSize).floor();
+    final swCellY = (visibleBounds.southwest.latitude / SpatialDb.gridSize).floor();
+    final neCellX = (visibleBounds.northeast.longitude / SpatialDb.gridSize).floor();
+    final neCellY = (visibleBounds.northeast.latitude / SpatialDb.gridSize).floor();
 
     debugPrint('Viewport covers cells: ($swCellX,$swCellY) to ($neCellX,$neCellY)');
 
@@ -160,10 +160,10 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
           final cellPolygon = Polygon(
             polygonId: PolygonId('cell_$cellKey'),
             points: [
-              LatLng(y * Spatialite.gridSize, x * Spatialite.gridSize),
-              LatLng(y * Spatialite.gridSize, (x + 1) * Spatialite.gridSize),
-              LatLng((y + 1) * Spatialite.gridSize, (x + 1) * Spatialite.gridSize),
-              LatLng((y + 1) * Spatialite.gridSize, x * Spatialite.gridSize),
+              LatLng(y * SpatialDb.gridSize, x * SpatialDb.gridSize),
+              LatLng(y * SpatialDb.gridSize, (x + 1) * SpatialDb.gridSize),
+              LatLng((y + 1) * SpatialDb.gridSize, (x + 1) * SpatialDb.gridSize),
+              LatLng((y + 1) * SpatialDb.gridSize, x * SpatialDb.gridSize),
             ],
             strokeColor: Colors.red,
             strokeWidth: 2,
@@ -183,13 +183,13 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   Future<void> _loadPOIsForCell(int cellX, int cellY, String cellKey) async {
     try {
       final cellBounds = jts.Envelope(
-        cellX * Spatialite.gridSize,
-        (cellX + 1) * Spatialite.gridSize,
-        cellY * Spatialite.gridSize,
-        (cellY + 1) * Spatialite.gridSize
+        cellX * SpatialDb.gridSize,
+        (cellX + 1) * SpatialDb.gridSize,
+        cellY * SpatialDb.gridSize,
+        (cellY + 1) * SpatialDb.gridSize
       );
 
-      final points = await Spatialite().getPointsInBoundingBox(cellBounds);
+      final points = await SpatialDb().getPointsInBoundingBox(cellBounds);
       final shuffledPoints = List.from(points)..shuffle();
       final filteredPoints = shuffledPoints.take(poisPerCell).toList();
 
@@ -329,8 +329,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       isLoadingPOIs = true;
     });
     
-    await Spatialite().emptyTable(Spatialite.pois);
-    await Spatialite().emptyTable(Spatialite.cells);
+    await SpatialDb().emptyTable(SpatialDb.pois);
+    await SpatialDb().emptyTable(SpatialDb.cells);
     
     setState(() {
       _markers = {};

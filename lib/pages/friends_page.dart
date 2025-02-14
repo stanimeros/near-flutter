@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_near/services/firestore.dart';
 import 'package:flutter_near/services/location.dart';
 import 'package:flutter_near/models/near_user.dart';
-import 'package:flutter_near/services/Spatialite.dart';
+import 'package:flutter_near/services/spatial_db.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:flutter_near/widgets/profile_picture.dart';
 import 'package:dart_jts/dart_jts.dart' as jts;
@@ -46,7 +46,7 @@ class _FriendsPageState extends State<FriendsPage> {
 
     GeoPoint? pos = await LocationService().getCurrentPosition();
     if (pos != null) {
-      jts.Point random = await Spatialite().getRandomKNN(
+      jts.Point random = await SpatialDb().getRandomKNN(
         widget.currentUser.kAnonymity,
         pos.longitude,
         pos.latitude,
