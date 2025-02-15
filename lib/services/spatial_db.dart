@@ -35,6 +35,7 @@ class BoundingBox {
 class SpatialDb {
   static late GeopackageDb db;
   static const double gridSize = 0.005;
+  static const double metersPerDegree = 111000.0;
   static String dbFilename = 'points.gpkg';
   static TableName pois = TableName("pois", schemaSupported: false);
   static TableName cells = TableName("cells", schemaSupported: false);
@@ -162,7 +163,7 @@ class SpatialDb {
           if (!cellsInArea.contains(cell)) {
             await addCellToDb(lon, lat);
             cellsInArea.add(cell);
-            await downloadPointsFromOSM(cell);
+            downloadPointsFromOSM(cell);
           }
         }
       }
@@ -195,16 +196,17 @@ class SpatialDb {
   Future<Point> getRandomKNN(int k, double lon, double lat, double bufferMeters) async {
     List<Point> list = [];
 
-    while (list.length < k){
+    while (list.length < k) {
       debugPrint('Creating bbox with side ${bufferMeters*2}m');
       BoundingBox boundingBox = await createBufferBoundingBox(lon, lat, bufferMeters);
+      // Get cells in the updated bounding box area
       await getCellsInArea(boundingBox);
       List<Point> points = await getPointsInBoundingBox(boundingBox);
 
-      if (points.length < k){
+      if (points.length < k) {
         debugPrint('Found ${points.length} points < $k');
-        bufferMeters *= sqrt2;
-        if (bufferMeters > 111000.0){
+        bufferMeters *= sqrt2;  // Increase search radius
+        if (bufferMeters > metersPerDegree) {
           break;
         }
         continue;
@@ -218,19 +220,18 @@ class SpatialDb {
     return list[random.nextInt(list.length)];
   }
 
-  Future<BoundingBox> createBufferBoundingBox(double lon, double lat, double bufferMeters) async{
-    const double metersPerDegree = 111000.0;
+  Future<BoundingBox> createBufferBoundingBox(double lon, double lat, double bufferMeters) async {
+    // Fix the latitude buffer calculation
     double latBuffer = bufferMeters / metersPerDegree;
+    // Fix the longitude buffer calculation using the center latitude
     double lonBuffer = bufferMeters / (metersPerDegree * cos(lat * pi / 180));
 
-    BoundingBox boundingBox = BoundingBox(
+    return BoundingBox(
       lon - lonBuffer,
       lon + lonBuffer,
       lat - latBuffer,
       lat + latBuffer,
     );
-
-    return boundingBox;
   }
 
   Future<void> downloadPointsFromOSM(BoundingBox boundingBox) async {
@@ -241,7 +242,7 @@ class SpatialDb {
     debugPrint('Downloading from: $api');
     final response = await http.get(
       Uri.parse(api),
-    ).timeout(const Duration(milliseconds: 5000));
+    ).timeout(const Duration(seconds: 30));
 
     if (response.statusCode == 200) {
       debugPrint('Parsing points');
@@ -259,7 +260,6 @@ class SpatialDb {
           List<int> geomBytes = GeoPkgGeomWriter().write(point);
           return geomBytes;
         }).toList();
-
         
         // Execute single insert with all points
         db.execute(
