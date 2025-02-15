@@ -64,76 +64,73 @@ class _FriendsPageState extends State<FriendsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          const Row(
-            children: [
-              Text(
-                'Friends',
-                style: TextStyle(fontSize: 24),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: currentUser!.location != null
-                ? FutureBuilder(
-                    future: futureList,
-                    builder: (context, snapshot) {
-                      if (snapshot.hasData) {
-                        List<NearUser> friends = snapshot.data!;
-                        List<NearUser> oFriends = currentUser!
-                            .getUsersOrderedByLocation(friends);
-
-                        if (!oFriends.any((friend) => 
-                            friend.uid == currentUser!.uid)) {
-                          oFriends.insert(0, currentUser!);
-                        }
-
-                        return ListView.builder(
-                          itemCount: oFriends.length,
-                          itemBuilder: (context, index) {
-                            return ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              leading: ProfilePicture(
-                                user: oFriends[index],
-                                size: 45,
-                                color: Theme.of(context)
-                                    .textTheme
-                                    .bodyLarge
-                                    ?.color ?? 
-                                    Colors.black,
-                                backgroundColor: Theme.of(context)
-                                    .colorScheme
-                                    .surface,
+    return Column(
+      children: [
+        const Row(
+          children: [
+            Text(
+              'Friends',
+              style: TextStyle(fontSize: 24),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Expanded(
+          child: currentUser!.location != null
+            ? FutureBuilder(
+              future: futureList,
+              builder: (context, snapshot) {
+                if (snapshot.hasData) {
+                  List<NearUser> friends = snapshot.data!;
+                  List<NearUser> oFriends = currentUser!
+                      .getUsersOrderedByLocation(friends);
+    
+                  if (!oFriends.any((friend) => 
+                      friend.uid == currentUser!.uid)) {
+                    oFriends.insert(0, currentUser!);
+                  }
+    
+                  return ListView.builder(
+                    itemCount: oFriends.length,
+                    itemBuilder: (context, index) {
+                      return ListTile(
+                        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        leading: ProfilePicture(
+                          user: oFriends[index],
+                          size: 45,
+                          color: Theme.of(context)
+                              .textTheme
+                              .bodyLarge
+                              ?.color ?? 
+                              Colors.black,
+                          backgroundColor: Theme.of(context)
+                              .colorScheme
+                              .surface,
+                        ),
+                        title: Text(oFriends[index].username),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            SlidePageRoute(
+                              page: FriendPage(
+                                friend: oFriends[index],
+                                currentUser: currentUser!,
                               ),
-                              title: Text(oFriends[index].username),
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  SlidePageRoute(
-                                    page: FriendPage(
-                                      friend: oFriends[index],
-                                      currentUser: currentUser!,
-                                    ),
-                                  ),
-                                );
-                              },
-                            );
-                          },
-                        );
-                      } else if (snapshot.hasError) {
-                        return Text('Error: ${snapshot.error}');
-                      }
-                      return const CustomLoader();
+                            ),
+                          );
+                        },
+                      );
                     },
-                  )
-                : const Text('Please share your location'),
-          ),
-        ],
-      ),
+                  );
+                } else if (snapshot.hasError) {
+                  return Text('Error: ${snapshot.error}');
+                }
+                return const CustomLoader();
+              },
+            )
+          : const Text('Please share your location'),
+        ),
+      ],
     );
   }
 }

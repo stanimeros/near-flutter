@@ -247,8 +247,6 @@ class SpatialDb {
       'node(${boundingBox.minLat.toStringAsFixed(6)},${boundingBox.minLon.toStringAsFixed(6)},'
       '${boundingBox.maxLat.toStringAsFixed(6)},${boundingBox.maxLon.toStringAsFixed(6)});'
       'out;';
-
-    debugPrint('Downloading from: $api');
     
     try {
       final response = await http.get(
@@ -256,7 +254,6 @@ class SpatialDb {
       ).timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
-        debugPrint('Parsing points from response');
         final points = await compute(parsePointsFromJSON, response.body);
         debugPrint('Got ${points.length} points');
 
