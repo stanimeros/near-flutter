@@ -16,71 +16,120 @@ class FriendPage extends StatelessWidget {
     required this.currentUser,
   });
 
+  Future<void> _confirmDeleteFriend(BuildContext context) async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Friend'),
+        content: Text('Are you sure you want to remove ${friend.username} from your friends?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && context.mounted) {
+      await FirestoreService().removeFriend(currentUser.uid, friend.uid);
+      if (context.mounted) {
+        Navigator.pop(context);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        // scrolledUnderElevation: 0,
+        scrolledUnderElevation: 0,
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
-        title: Text(friend.username),
+        title: Row(
+          children: [
+            Hero(
+              tag: 'profile-${friend.uid}',
+              child: CircleAvatar(
+                radius: 20,
+                backgroundImage: friend.imageURL.isNotEmpty ? 
+                  NetworkImage(friend.imageURL) : null,
+                child: friend.imageURL.isEmpty ? 
+                  Text(
+                    friend.username[0].toUpperCase(),
+                    style: const TextStyle(fontSize: 20),
+                  ) : null,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(friend.username),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(LucideIcons.trash2),
+            color: Theme.of(context).colorScheme.error,
+            onPressed: () => _confirmDeleteFriend(context),
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Profile Section
-            Center(
-              child: Hero(
-                tag: 'profile-${friend.uid}',
-                child: CircleAvatar(
-                  radius: 60,
-                  backgroundImage: friend.imageURL.isNotEmpty ? 
-                    NetworkImage(friend.imageURL) : null,
-                  child: friend.imageURL.isEmpty ? 
-                    Text(
-                      friend.username[0].toUpperCase(),
-                      style: const TextStyle(fontSize: 40),
-                    ) : null,
-                ),
+            // Distance info
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
               ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              friend.username,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            Text(
-              currentUser.getConvertedDistanceBetweenUser(friend),
-              style: Theme.of(context).textTheme.bodyMedium,
+              child: Row(
+                children: [
+                  const Icon(LucideIcons.map),
+                  const SizedBox(width: 12),
+                  Text(
+                    currentUser.getConvertedDistanceBetweenUser(friend),
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 24),
 
             // Suggest Meeting Button
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => MapPage(
-                      friend: friend,
-                      currentUser: currentUser,
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => MapPage(
+                        friend: friend,
+                        currentUser: currentUser,
+                      ),
                     ),
-                  ),
-                );
-              },
-              icon: const Icon(LucideIcons.mapPin),
-              label: const Text('Suggest Meeting'),
+                  );
+                },
+                icon: const Icon(LucideIcons.mapPin),
+                label: const Text('Suggest Meeting'),
+              ),
             ),
             const SizedBox(height: 24),
 
-            // Pending Meetings Section
-            const Text(
-              'Meeting Requests',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+            // Meeting History
+            Text(
+              'Meeting History',
+              style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
             Expanded(
@@ -95,8 +144,13 @@ class FriendPage extends StatelessWidget {
                   }
 
                   if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                    return const Center(
-                      child: Text('No meeting requests'),
+                    return Center(
+                      child: Text(
+                        'No meetings yet',
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                      ),
                     );
                   }
 

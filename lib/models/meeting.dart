@@ -7,7 +7,7 @@ class Meeting {
   final String receiverId;
   final GeoPoint location;
   final DateTime time;
-  final MeetingStatus status;
+  MeetingStatus status;
 
   Meeting({
     required this.id,

@@ -95,31 +95,31 @@ class FirestoreService {
   }
 
   Future<void> sendRequest(String uid, String username) async {
-    try{
+    try {
       String? fuid = await getUID(username);
       if (fuid != null) {
-        bool? reqEx1 = await requestExists(uid, fuid);
-        if (reqEx1 != null && !reqEx1){
-          bool? reqEx2 = await requestExists(fuid, uid);
-          if (reqEx2 != null && !reqEx2){
-            QuerySnapshot requestsSnapshot = await firestore
-              .collection('requests')
-              .where('uid', isEqualTo: uid) 
-              .where('fuid', isEqualTo: fuid)
-              .get();
+        // Query for request with both users
+        // Query for requests between these users in either direction
+        QuerySnapshot requestsSnapshot = await firestore
+          .collection('requests')
+          .where('users', whereIn: [[uid, fuid], [fuid, uid]])
+          .get();
 
-            if (requestsSnapshot.docs.isEmpty) {
-              DocumentReference requestDocRef = firestore.collection('requests').doc();
-              await requestDocRef.set({
-                'uid': uid,
-                'fuid': fuid,
-                'status': 'pending'
-              }, SetOptions(merge: true));
-            }
-          }
+        // If no request exists, create new one
+        if (requestsSnapshot.docs.isEmpty) {
+          DocumentReference requestDocRef = firestore
+            .collection('requests')
+            .doc();
+
+          await requestDocRef.set({
+            'uid': uid,
+            'fuid': fuid,
+            'users': [uid, fuid],
+            'status': 'pending'
+          }, SetOptions(merge: true));
         }
       }
-    }catch(e){
+    } catch(e) {
       debugPrint('Error sendRequest: $e');
     }
   }
@@ -159,6 +159,22 @@ class FirestoreService {
     }
   }
 
+    Future<void> removeFriend(String uid, String fuid) async {
+    try{
+      QuerySnapshot requestsSnapshot = await firestore
+        .collection('requests')
+        .where('users', whereIn: [[uid, fuid], [fuid, uid]])
+        .get();
+
+      if (requestsSnapshot.docs.isNotEmpty) {
+        DocumentReference requestDocRef = requestsSnapshot.docs.first.reference;
+        await requestDocRef.delete();
+      }
+    }catch(e){
+      debugPrint('Error removeFriend: $e');
+    }
+  }
+
   Future<String?> getUID(String username) async {
     try{
       QuerySnapshot usersSnapshot = await firestore
@@ -173,24 +189,6 @@ class FirestoreService {
       debugPrint('Error getUID: $e');
     }
     return null;
-  }
-
-  Future<bool?> requestExists(String uid, String fuid) async {
-    try{
-      QuerySnapshot requestsSnapshot = await firestore
-        .collection('requests')
-        .where('uid', isEqualTo: uid)
-        .where('fuid', isEqualTo: fuid)
-        .get();
-
-      if (requestsSnapshot.docs.isNotEmpty) {
-        return true;
-      }
-      return false;
-    }catch(e){
-      debugPrint('Error requestExists: $e');
-      return null;
-    }
   }
 
   Future<void> setLocation(String uid, double lon, double lat) async {
@@ -240,20 +238,20 @@ class FirestoreService {
   }
 
   Stream<List<Meeting>> getMeetingsWithFriend(String userId, String friendId) {
-    return FirebaseFirestore.instance
-        .collection('meetings')
-        .where('senderId', whereIn: [userId, friendId])
-        .where('receiverId', whereIn: [userId, friendId])
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => Meeting.fromFirestore(doc))
-            .toList());
+    return firestore
+      .collection('meetings')
+      .where('senderId', whereIn: [userId, friendId])
+      .where('receiverId', whereIn: [userId, friendId])
+      .snapshots()
+      .map((snapshot) => snapshot.docs
+        .map((doc) => Meeting.fromFirestore(doc))
+        .toList());
   }
 
   Future<void> updateMeetingStatus(String meetingId, MeetingStatus newStatus) {
-    return FirebaseFirestore.instance
-        .collection('meetings')
-        .doc(meetingId)
-        .update({'status': newStatus.toString().split('.').last});
+    return firestore
+      .collection('meetings')
+      .doc(meetingId)
+      .update({'status': newStatus.toString().split('.').last});
   }
 }

@@ -138,6 +138,13 @@ class SpatialDb {
       int minLat = (boundingBox.minLat / gridSize).floor();
       int maxLat = (boundingBox.maxLat / gridSize).floor();
       
+      // Calculate total number of cells
+      int totalCells = (maxLon - minLon + 1) * (maxLat - minLat + 1);
+      if (totalCells > 4) {
+        debugPrint('Too many cells: $totalCells > 4');
+        return [];
+      }
+      
       debugPrint('Grid area: ($minLon,$minLat) to ($maxLon,$maxLat)');
       
       // Get existing cells
@@ -184,6 +191,10 @@ class SpatialDb {
 
   // Function to get points within a bounding box
   Future<List<Point>> getPointsInBoundingBox(BoundingBox boundingBox) async {
+    if (boundingBox.maxLon - boundingBox.minLon > 1000/metersPerDegree || boundingBox.maxLat - boundingBox.minLat > 1000/metersPerDegree) {
+      return [];
+    }
+    
     List<Point> list = [];
     DateTime before = DateTime.now();
     List<jts.Geometry?> geometries = db.getGeometriesIn(

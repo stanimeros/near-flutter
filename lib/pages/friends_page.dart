@@ -66,13 +66,16 @@ class _FriendsPageState extends State<FriendsPage> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const Row(
-          children: [
-            Text(
-              'Friends',
-              style: TextStyle(fontSize: 24),
-            ),
-          ],
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: const Row(
+            children: [
+              Text(
+                'Friends',
+                style: TextStyle(fontSize: 24),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 16),
         Expanded(
@@ -84,11 +87,6 @@ class _FriendsPageState extends State<FriendsPage> {
                   List<NearUser> friends = snapshot.data!;
                   List<NearUser> oFriends = currentUser!
                       .getUsersOrderedByLocation(friends);
-    
-                  if (!oFriends.any((friend) => 
-                      friend.uid == currentUser!.uid)) {
-                    oFriends.insert(0, currentUser!);
-                  }
     
                   return ListView.builder(
                     itemCount: oFriends.length,
