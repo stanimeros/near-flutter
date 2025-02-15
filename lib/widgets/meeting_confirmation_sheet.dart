@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:dart_jts/dart_jts.dart' as jts;
 import 'package:action_slider/action_slider.dart';
+import 'package:flutter_near/services/spatial_db.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 class MeetingConfirmationSheet extends StatelessWidget {
-  final jts.Point point;
+  final Point point;
   final VoidCallback onConfirm;
 
   const MeetingConfirmationSheet({

@@ -1,12 +1,36 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'package:dart_jts/dart_jts.dart';
+import 'package:dart_jts/dart_jts.dart' as jts;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_geopackage/flutter_geopackage.dart';
 import 'package:dart_hydrologis_db/dart_hydrologis_db.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
+
+class Point {
+  double lon;
+  double lat;
+
+  Point(this.lon, this.lat);
+}
+
+class BoundingBox {
+  double minLon;
+  double maxLon;
+  double minLat;
+  double maxLat;
+  late jts.Envelope envelope;
+
+  BoundingBox(this.minLon, this.maxLon, this.minLat, this.maxLat) {
+    envelope = jts.Envelope(
+      minLon,
+      maxLon,
+      minLat,
+      maxLat,
+    );
+  }
+}
 
 class SpatialDb {
   static late GeopackageDb db;
@@ -30,7 +54,7 @@ class SpatialDb {
     }
   }
 
-  Future<void> deleteDb() async {
+  Future<void> deleteDbFile() async {
     try{
       Directory directory = await getApplicationDocumentsDirectory();
       String dbPath = '${directory.path}/$dbFilename';
@@ -74,7 +98,7 @@ class SpatialDb {
         db.createSpatialTable(
           cells,
           4326,
-          "cell_x INTEGER, cell_y INTEGER",
+          "cell_min_lon INTEGER, cell_min_lat INTEGER",
           ["id INTEGER PRIMARY KEY AUTOINCREMENT"],
           null,
           false,
@@ -99,69 +123,70 @@ class SpatialDb {
     }
   }
 
-  Future<void> addCellToDb(int x, int y) async {
-    String sql = "INSERT OR IGNORE INTO ${cells.fixedName} (cell_x, cell_y) VALUES (?, ?);";
-    db.execute(sql, arguments: [x, y]);
+  Future<void> addCellToDb(int minLon, int minLat) async {
+    String sql = "INSERT OR IGNORE INTO ${cells.fixedName} (cell_min_lon, cell_min_lat) VALUES (?, ?);";
+    db.execute(sql, arguments: [minLon, minLat]);
   }
 
-  Future<void> ensureCellsInArea(Envelope boundingBox) async {
+  Future<List<BoundingBox>> getCellsInArea(BoundingBox boundingBox) async {
+    List<BoundingBox> cellsInArea = [];
     try {
-      int minX = (boundingBox.getMinX() / gridSize).floor();
-      int maxX = (boundingBox.getMaxX() / gridSize).floor();
-      int minY = (boundingBox.getMinY() / gridSize).floor();
-      int maxY = (boundingBox.getMaxY() / gridSize).floor();
-
-      debugPrint('Grid area: ($minX,$minY) to ($maxX,$maxY) - ${(maxX-minX)*(maxY-minY)} cells');
-
-      // Get existing cells first
-      final existingCells = db.select(
-        'SELECT cell_x, cell_y FROM ${cells.fixedName} WHERE cell_x BETWEEN $minX AND $maxX AND cell_y BETWEEN $minY AND $maxY'
-      );
+      int minLon = (boundingBox.minLon / gridSize).floor();
+      int maxLon = (boundingBox.maxLon / gridSize).floor();
+      int minLat = (boundingBox.minLat / gridSize).floor();
+      int maxLat = (boundingBox.maxLat / gridSize).floor();
       
-      // Fix: Create set properly
-      final existingSet = <String>{};
-      existingCells.forEach(
-        (row) => existingSet.add('${row.get("cell_x")},${row.get("cell_y")}')
+      final existingCells = db.select(
+        'SELECT cell_min_lon, cell_min_lat FROM ${cells.fixedName} WHERE cell_min_lon BETWEEN $minLon AND $maxLon AND cell_min_lat BETWEEN $minLat AND $maxLat'
       );
 
-      debugPrint('Found ${existingSet.length} existing cells');
+      existingCells.forEach(
+        (row) async {
+          final cell = await createBufferBoundingBox(
+            row.get("cell_min_lon") * gridSize,
+            row.get("cell_min_lat") * gridSize,
+            gridSize
+          );
+          cellsInArea.add(cell);
+        }
+      );
 
-      // Download missing cells with rate limiting
-      for (int x = minX; x <= maxX; x++) {
-        for (int y = minY; y <= maxY; y++) {
-          final cellKey = '$x,$y';
-          if (!existingSet.contains(cellKey)) {
-            debugPrint('Need to download cell $cellKey');
-            double cellMinLon = x * gridSize;
-            double cellMaxLon = (x + 1) * gridSize;
-            double cellMinLat = y * gridSize;
-            double cellMaxLat = (y + 1) * gridSize;
-
-            await downloadPointsFromOSM(cellMinLon, cellMinLat, cellMaxLon, cellMaxLat);
-            await addCellToDb(x, y);
+      for (int lon = minLon; lon <= maxLon; lon++) {
+        for (int lat = minLat; lat <= maxLat; lat++) {
+          final cell = await createBufferBoundingBox(
+            lon * gridSize, 
+            lat * gridSize, 
+            gridSize
+          );
+          
+          if (!cellsInArea.contains(cell)) {
+            await addCellToDb(lon, lat);
+            cellsInArea.add(cell);
+            await downloadPointsFromOSM(cell);
           }
         }
       }
-    } catch (e) {
+
+      return cellsInArea;
+    }catch(e){
       debugPrint(e.toString());
     }
+    return [];
   }
 
   // Function to get points within a bounding box
-  Future<List<Point>> getPointsInBoundingBox(Envelope boundingBox) async {
-    await ensureCellsInArea(boundingBox);
-
+  Future<List<Point>> getPointsInBoundingBox(BoundingBox boundingBox) async {
     List<Point> list = [];
     DateTime before = DateTime.now();
-    List<Geometry?> geometries = db.getGeometriesIn(
-      pois, envelope: boundingBox
+    List<jts.Geometry?> geometries = db.getGeometriesIn(
+      pois, envelope: boundingBox.envelope
     );
     DateTime after = DateTime.now();
     debugPrint('Query took ${after.difference(before).inMilliseconds.toString()}ms');
 
     for (var geometry in geometries) {
-      if (geometry is Point) {
-        list.add(geometry);
+      if (geometry is jts.Point) {
+        list.add(Point(geometry.getX(), geometry.getY()));
       }
     }
     return list;
@@ -172,7 +197,8 @@ class SpatialDb {
 
     while (list.length < k){
       debugPrint('Creating bbox with side ${bufferMeters*2}m');
-      Envelope boundingBox = await createBoundingBox(lon, lat, bufferMeters);
+      BoundingBox boundingBox = await createBufferBoundingBox(lon, lat, bufferMeters);
+      await getCellsInArea(boundingBox);
       List<Point> points = await getPointsInBoundingBox(boundingBox);
 
       if (points.length < k){
@@ -192,12 +218,12 @@ class SpatialDb {
     return list[random.nextInt(list.length)];
   }
 
-  Future<Envelope> createBoundingBox(double lon, double lat, double bufferMeters) async{
+  Future<BoundingBox> createBufferBoundingBox(double lon, double lat, double bufferMeters) async{
     const double metersPerDegree = 111000.0;
     double latBuffer = bufferMeters / metersPerDegree;
     double lonBuffer = bufferMeters / (metersPerDegree * cos(lat * pi / 180));
 
-    Envelope boundingBox = Envelope(
+    BoundingBox boundingBox = BoundingBox(
       lon - lonBuffer,
       lon + lonBuffer,
       lat - latBuffer,
@@ -207,11 +233,11 @@ class SpatialDb {
     return boundingBox;
   }
 
-  Future<void> downloadPointsFromOSM(double minLon, double minLat, double maxLon, double maxLat) async {
+  Future<void> downloadPointsFromOSM(BoundingBox boundingBox) async {
     String api = 'https://overpass-api.de/api/interpreter?data=[out:json];'
-      'node($minLat,$minLon,$maxLat,$maxLon);'
+      'node(${boundingBox.minLat},${boundingBox.minLon},${boundingBox.maxLat},${boundingBox.maxLon});'
       'out;';
-    
+
     debugPrint('Downloading from: $api');
     final response = await http.get(
       Uri.parse(api),
@@ -223,13 +249,13 @@ class SpatialDb {
 
       debugPrint('Got ${points.length} points');
       if (points.isEmpty) return;
-      GeometryFactory gf = GeometryFactory.defaultPrecision();
+      jts.GeometryFactory gf = jts.GeometryFactory.defaultPrecision();
 
       try {
         // Build values string for all points
         final values = points.map((p) => "(?)").join(",");
         final arguments = points.map((p) {
-          Point point = gf.createPoint(Coordinate(p['lon']!, p['lat']!));
+          jts.Point point = gf.createPoint(jts.Coordinate(p['lon']!, p['lat']!));
           List<int> geomBytes = GeoPkgGeomWriter().write(point);
           return geomBytes;
         }).toList();

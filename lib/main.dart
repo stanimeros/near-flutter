@@ -41,7 +41,7 @@ class _MainAppState extends State<MainApp> {
   @override
   void initState() {
     super.initState();
-    pageController = PageController(initialPage: 0);
+    pageController = PageController(initialPage: 1);
     pageController.addListener(_handlePageChange);
   }
 

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:dart_jts/dart_jts.dart' as jts;
 import 'package:flutter_near/services/location.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -40,7 +39,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   LatLng? initialPosition;
   String? errorMessage;
   bool _isCameraMoving = false;
-  jts.Point? _selectedPOI;
+  Point? _selectedPOI;
   final Map<String, Set<Marker>> _cellMarkers = {}; // Track markers per cell
   final Set<Polygon> _cellPolygons = {};  // Add this for cell visualization
   static const int poisPerCell = 5;   // Show 50 POIs per cell
@@ -125,6 +124,12 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     if (_mapController == null) return;
 
     final LatLngBounds visibleBounds = await _mapController!.getVisibleRegion();
+    final visibleBoundingBox = BoundingBox(
+      visibleBounds.southwest.longitude,
+      visibleBounds.northeast.longitude,
+      visibleBounds.southwest.latitude,
+      visibleBounds.northeast.latitude
+    );
     
     // Add blue polygon for viewport
     final viewportPolygon = Polygon(
@@ -141,12 +146,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     );
 
     // Calculate all cells that intersect with viewport
-    final swCellX = (visibleBounds.southwest.longitude / SpatialDb.gridSize).floor();
-    final swCellY = (visibleBounds.southwest.latitude / SpatialDb.gridSize).floor();
-    final neCellX = (visibleBounds.northeast.longitude / SpatialDb.gridSize).floor();
-    final neCellY = (visibleBounds.northeast.latitude / SpatialDb.gridSize).floor();
-
-    debugPrint('Viewport covers cells: ($swCellX,$swCellY) to ($neCellX,$neCellY)');
+    final cellsInArea = await SpatialDb().getCellsInArea(visibleBoundingBox);
 
     setState(() {
       // Update viewport polygon
@@ -154,16 +154,15 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       _cellPolygons.add(viewportPolygon);
 
       // Add red polygons for all cells in viewport
-      for (int x = swCellX; x <= neCellX; x++) {
-        for (int y = swCellY; y <= neCellY; y++) {
-          final cellKey = '$x,$y';
-          final cellPolygon = Polygon(
+      for (var cell in cellsInArea) {
+        final cellKey = '${cell.minLon},${cell.minLat}';
+        final cellPolygon = Polygon(
             polygonId: PolygonId('cell_$cellKey'),
             points: [
-              LatLng(y * SpatialDb.gridSize, x * SpatialDb.gridSize),
-              LatLng(y * SpatialDb.gridSize, (x + 1) * SpatialDb.gridSize),
-              LatLng((y + 1) * SpatialDb.gridSize, (x + 1) * SpatialDb.gridSize),
-              LatLng((y + 1) * SpatialDb.gridSize, x * SpatialDb.gridSize),
+              LatLng(cell.minLat, cell.minLon),
+              LatLng(cell.minLat, cell.maxLon),
+              LatLng(cell.maxLat, cell.maxLon),
+              LatLng(cell.maxLat, cell.minLon),
             ],
             strokeColor: Colors.red,
             strokeWidth: 2,
@@ -173,23 +172,21 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
           // Load POIs for this cell if not already loaded
           if (!_cellMarkers.containsKey(cellKey)) {
-            _loadPOIsForCell(x, y, cellKey);
+            _loadPOIsForCell(cell.minLon, cell.minLat, cellKey);
           }
-        }
       }
     });
   }
-
-  Future<void> _loadPOIsForCell(int cellX, int cellY, String cellKey) async {
+    
+  Future<void> _loadPOIsForCell(double cellLon, double cellLat, String cellKey) async {
     try {
-      final cellBounds = jts.Envelope(
-        cellX * SpatialDb.gridSize,
-        (cellX + 1) * SpatialDb.gridSize,
-        cellY * SpatialDb.gridSize,
-        (cellY + 1) * SpatialDb.gridSize
+      final searchArea = await SpatialDb().createBufferBoundingBox(
+        cellLon,
+        cellLat,
+        SpatialDb.gridSize
       );
 
-      final points = await SpatialDb().getPointsInBoundingBox(cellBounds);
+      final points = await SpatialDb().getPointsInBoundingBox(searchArea);
       final shuffledPoints = List.from(points)..shuffle();
       final filteredPoints = shuffledPoints.take(poisPerCell).toList();
 
@@ -198,8 +195,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         for (var point in filteredPoints) {
           cellMarkers.add(
             Marker(
-              markerId: MarkerId('${point.getX()}-${point.getY()}'),
-              position: LatLng(point.getY(), point.getX()),
+              markerId: MarkerId('${point.lon}-${point.lat}'),
+              position: LatLng(point.lat, point.lon),
               icon: BitmapDescriptor.defaultMarker,
               onTap: () => _onMarkerTapped(point),
             ),
@@ -216,7 +213,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     }
   }
 
-  void _onMarkerTapped(jts.Point point) {
+  void _onMarkerTapped(Point point) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -356,7 +353,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       id: '', // Firestore will generate
       senderId: widget.currentUser!.uid,
       receiverId: widget.friend!.uid,
-      location: GeoPoint(_selectedPOI!.getY(), _selectedPOI!.getX()),
+      location: GeoPoint(_selectedPOI!.lat, _selectedPOI!.lon),
       time: DateTime.now().add(const Duration(days: 1)),
       status: MeetingStatus.pending,
     );
