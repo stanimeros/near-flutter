@@ -5,17 +5,16 @@ import 'package:flutter_near/services/firestore.dart';
 import 'package:flutter_near/services/location.dart';
 import 'package:flutter_near/models/near_user.dart';
 import 'package:flutter_near/services/spatial_db.dart';
+import 'package:flutter_near/services/user_provider.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:flutter_near/widgets/profile_picture.dart';
 import 'package:flutter_near/pages/friend_page.dart';
 import 'package:flutter_near/widgets/slide_page_route.dart';
+import 'package:provider/provider.dart';
 
 class FriendsPage extends StatefulWidget {
-  final NearUser currentUser;
-
   const FriendsPage({
     super.key,
-    required this.currentUser,
   });
 
   @override
@@ -24,11 +23,14 @@ class FriendsPage extends StatefulWidget {
 
 class _FriendsPageState extends State<FriendsPage> {
   bool isLoading = false;
+  NearUser? currentUser;
   Future<List<NearUser>>? futureList;
 
   @override
   void initState() {
     super.initState();
+    final userProvider = context.read<UserProvider>();
+    currentUser = userProvider.nearUser;
     fetchData();
   }
 
@@ -46,17 +48,17 @@ class _FriendsPageState extends State<FriendsPage> {
     GeoPoint? pos = await LocationService().getCurrentPosition();
     if (pos != null) {
       Point random = await SpatialDb().getRandomKNN(
-        widget.currentUser.kAnonymity,
+        currentUser!.kAnonymity,
         pos.longitude,
         pos.latitude,
         50
       );
-      await FirestoreService().setLocation(widget.currentUser.uid, random.lon, random.lat);
+      await FirestoreService().setLocation(currentUser!.uid, random.lon, random.lat);
     }
 
     setState(() {
       isLoading = false;
-      futureList = FirestoreService().getFriends(widget.currentUser.uid);
+      futureList = FirestoreService().getFriends(currentUser!.uid);
     });
   }
 
@@ -76,18 +78,18 @@ class _FriendsPageState extends State<FriendsPage> {
           ),
           const SizedBox(height: 16),
           Expanded(
-            child: widget.currentUser.location != null
+            child: currentUser!.location != null
                 ? FutureBuilder(
                     future: futureList,
                     builder: (context, snapshot) {
                       if (snapshot.hasData) {
                         List<NearUser> friends = snapshot.data!;
-                        List<NearUser> oFriends = widget.currentUser
+                        List<NearUser> oFriends = currentUser!
                             .getUsersOrderedByLocation(friends);
 
                         if (!oFriends.any((friend) => 
-                            friend.uid == widget.currentUser.uid)) {
-                          oFriends.insert(0, widget.currentUser);
+                            friend.uid == currentUser!.uid)) {
+                          oFriends.insert(0, currentUser!);
                         }
 
                         return ListView.builder(
@@ -114,7 +116,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                   SlidePageRoute(
                                     page: FriendPage(
                                       friend: oFriends[index],
-                                      currentUser: widget.currentUser,
+                                      currentUser: currentUser!,
                                     ),
                                   ),
                                 );

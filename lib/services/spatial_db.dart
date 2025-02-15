@@ -132,45 +132,52 @@ class SpatialDb {
   Future<List<BoundingBox>> getCellsInArea(BoundingBox boundingBox) async {
     List<BoundingBox> cellsInArea = [];
     try {
+      // Calculate cell indices
       int minLon = (boundingBox.minLon / gridSize).floor();
       int maxLon = (boundingBox.maxLon / gridSize).floor();
       int minLat = (boundingBox.minLat / gridSize).floor();
       int maxLat = (boundingBox.maxLat / gridSize).floor();
       
+      debugPrint('Grid area: ($minLon,$minLat) to ($maxLon,$maxLat)');
+      
+      // Get existing cells
       final existingCells = db.select(
         'SELECT cell_min_lon, cell_min_lat FROM ${cells.fixedName} WHERE cell_min_lon BETWEEN $minLon AND $maxLon AND cell_min_lat BETWEEN $minLat AND $maxLat'
       );
 
+      Set<String> existingSet = {};
       existingCells.forEach(
-        (row) async {
-          final cell = await createBufferBoundingBox(
-            row.get("cell_min_lon") * gridSize,
-            row.get("cell_min_lat") * gridSize,
-            gridSize
-          );
-          cellsInArea.add(cell);
-        }
+        (row) => existingSet.add('${row.get("cell_min_lon")},${row.get("cell_min_lat")}')
       );
 
+      debugPrint('Found ${existingSet.length} existing cells');
+
+      // Process each cell in the grid
       for (int lon = minLon; lon <= maxLon; lon++) {
         for (int lat = minLat; lat <= maxLat; lat++) {
-          final cell = await createBufferBoundingBox(
-            lon * gridSize, 
-            lat * gridSize, 
-            gridSize
-          );
+          final cellKey = '$lon,$lat';
           
-          if (!cellsInArea.contains(cell)) {
+          // Calculate actual cell bounds
+          final cellBounds = BoundingBox(
+            lon * gridSize,           // minLon
+            (lon + 1) * gridSize,    // maxLon
+            lat * gridSize,          // minLat
+            (lat + 1) * gridSize,    // maxLat
+          );
+
+          if (!existingSet.contains(cellKey)) {
+            debugPrint('Downloading new cell $cellKey: ${cellBounds.minLon},${cellBounds.minLat} to ${cellBounds.maxLon},${cellBounds.maxLat}');
             await addCellToDb(lon, lat);
-            cellsInArea.add(cell);
-            downloadPointsFromOSM(cell);
+            await downloadPointsFromOSM(cellBounds);
           }
+          
+          cellsInArea.add(cellBounds);
         }
       }
 
       return cellsInArea;
-    }catch(e){
-      debugPrint(e.toString());
+    } catch(e) {
+      debugPrint('Error in getCellsInArea: $e');
     }
     return [];
   }
@@ -235,43 +242,44 @@ class SpatialDb {
   }
 
   Future<void> downloadPointsFromOSM(BoundingBox boundingBox) async {
+    // Format coordinates with 6 decimal places for precision
     String api = 'https://overpass-api.de/api/interpreter?data=[out:json];'
-      'node(${boundingBox.minLat},${boundingBox.minLon},${boundingBox.maxLat},${boundingBox.maxLon});'
+      'node(${boundingBox.minLat.toStringAsFixed(6)},${boundingBox.minLon.toStringAsFixed(6)},'
+      '${boundingBox.maxLat.toStringAsFixed(6)},${boundingBox.maxLon.toStringAsFixed(6)});'
       'out;';
 
     debugPrint('Downloading from: $api');
-    final response = await http.get(
-      Uri.parse(api),
-    ).timeout(const Duration(seconds: 30));
+    
+    try {
+      final response = await http.get(
+        Uri.parse(api),
+      ).timeout(const Duration(seconds: 5));
 
-    if (response.statusCode == 200) {
-      debugPrint('Parsing points');
-      final points = await compute(parsePointsFromJSON, response.body);
+      if (response.statusCode == 200) {
+        debugPrint('Parsing points from response');
+        final points = await compute(parsePointsFromJSON, response.body);
+        debugPrint('Got ${points.length} points');
 
-      debugPrint('Got ${points.length} points');
-      if (points.isEmpty) return;
-      jts.GeometryFactory gf = jts.GeometryFactory.defaultPrecision();
+        if (points.isEmpty) return;
 
-      try {
-        // Build values string for all points
+        jts.GeometryFactory gf = jts.GeometryFactory.defaultPrecision();
         final values = points.map((p) => "(?)").join(",");
         final arguments = points.map((p) {
           jts.Point point = gf.createPoint(jts.Coordinate(p['lon']!, p['lat']!));
-          List<int> geomBytes = GeoPkgGeomWriter().write(point);
-          return geomBytes;
+          return GeoPkgGeomWriter().write(point);
         }).toList();
         
-        // Execute single insert with all points
-        db.execute(
-          "INSERT OR IGNORE INTO ${pois.fixedName} (geopoint) VALUES $values",
-          arguments: arguments
-        );
-      } catch (e) {
-        debugPrint(e.toString());
+        if (arguments.isNotEmpty) {
+          db.execute(
+            "INSERT OR IGNORE INTO ${pois.fixedName} (geopoint) VALUES $values",
+            arguments: arguments
+          );
+        }
+      } else {
+        debugPrint('Failed to download points: ${response.statusCode} - ${response.body}');
       }
-    } else {
-      debugPrint('Failed to download points: ${response.body}');
-      throw Exception('Failed to download points: ${response.statusCode}');
+    } catch (e) {
+      debugPrint('Error downloading points: $e');
     }
   }
 }

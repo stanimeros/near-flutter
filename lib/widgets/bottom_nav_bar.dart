@@ -27,10 +27,6 @@ class _BottomNavBarState extends State<BottomNavBar> {
           label: 'Friends',
         ),
         NavigationDestination(
-          icon: Icon(LucideIcons.mapPin),
-          label: 'Map',
-        ),
-        NavigationDestination(
           icon: Icon(LucideIcons.bell),
           label: 'Requests',
         ),

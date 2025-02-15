@@ -8,7 +8,6 @@ import 'package:flutter_near/firebase_options.dart';
 import 'package:flutter_near/pages/login_page.dart';
 import 'package:flutter_near/pages/profile_page.dart';
 import 'package:flutter_near/pages/requests_page.dart';
-import 'package:flutter_near/pages/map_page.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_near/services/user_provider.dart';
@@ -41,7 +40,7 @@ class _MainAppState extends State<MainApp> {
   @override
   void initState() {
     super.initState();
-    pageController = PageController(initialPage: 1);
+    pageController = PageController(initialPage: 0);
     pageController.addListener(_handlePageChange);
   }
 
@@ -103,12 +102,7 @@ class _MainAppState extends State<MainApp> {
                         physics: const NeverScrollableScrollPhysics(),
                         controller: pageController,
                         children: [
-                          FriendsPage(
-                            currentUser: userProvider.nearUser!,
-                          ),
-                          MapPage(
-                            currentUser: userProvider.nearUser,
-                          ),
+                          const FriendsPage(),
                           const RequestsPage(),
                           const ProfilePage(),
                         ],

@@ -37,12 +37,11 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   bool isLoadingPOIs = false;     // For POIs loading
   bool isMapCreated = false;
   LatLng? initialPosition;
-  String? errorMessage;
   bool _isCameraMoving = false;
   Point? _selectedPOI;
   final Map<String, Set<Marker>> _cellMarkers = {}; // Track markers per cell
   final Set<Polygon> _cellPolygons = {};  // Add this for cell visualization
-  static const int poisPerCell = 5;   // Show 50 POIs per cell
+  static const int poisPerCell = 25;   // Show 50 POIs per cell
 
   @override
   void initState() {
@@ -70,7 +69,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     try {
       // First get location
       GeoPoint? pos = await LocationService().getCurrentPosition();
-      if (!mounted) return;
 
       if (pos != null) {
         setState(() {
@@ -88,12 +86,9 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         throw Exception('Could not get location');
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          errorMessage = e.toString();
-          isLoadingLocation = false;
-        });
-      }
+      setState(() {
+        isLoadingLocation = false;
+      });
     }
   }
 
@@ -172,42 +167,33 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
           // Load POIs for this cell if not already loaded
           if (!_cellMarkers.containsKey(cellKey)) {
-            _loadPOIsForCell(cell.minLon, cell.minLat, cellKey);
+            _loadPOIsForCell(cellKey, cell);
           }
       }
     });
   }
     
-  Future<void> _loadPOIsForCell(double cellLon, double cellLat, String cellKey) async {
+  Future<void> _loadPOIsForCell(String cellKey, BoundingBox cell) async {
     try {
-      final searchArea = await SpatialDb().createBufferBoundingBox(
-        cellLon,
-        cellLat,
-        SpatialDb.gridSize
-      );
+      final points = await SpatialDb().getPointsInBoundingBox(cell);
+      final filteredPoints = points.take(poisPerCell).toList();
 
-      final points = await SpatialDb().getPointsInBoundingBox(searchArea);
-      final shuffledPoints = List.from(points)..shuffle();
-      final filteredPoints = shuffledPoints.take(poisPerCell).toList();
-
-      if (mounted) {
-        final cellMarkers = <Marker>{};
-        for (var point in filteredPoints) {
-          cellMarkers.add(
-            Marker(
-              markerId: MarkerId('${point.lon}-${point.lat}'),
-              position: LatLng(point.lat, point.lon),
-              icon: BitmapDescriptor.defaultMarker,
-              onTap: () => _onMarkerTapped(point),
-            ),
-          );
-        }
-
-        setState(() {
-          _cellMarkers[cellKey] = cellMarkers;
-          _markers = _cellMarkers.values.expand((markers) => markers).toSet();
-        });
+      final cellMarkers = <Marker>{};
+      for (var point in filteredPoints) {
+        cellMarkers.add(
+          Marker(
+            markerId: MarkerId('marker_${point.lon}_${point.lat}'),
+            position: LatLng(point.lat, point.lon),
+            icon: BitmapDescriptor.defaultMarker,
+            onTap: () => _onMarkerTapped(point),
+          ),
+        );
       }
+
+      setState(() {
+        _cellMarkers[cellKey] = cellMarkers;
+        _markers = _cellMarkers.values.expand((markers) => markers).toSet();
+      });
     } catch (e) {
       debugPrint('Error loading POIs for cell $cellKey: $e');
     }
@@ -230,24 +216,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    if (errorMessage != null) {
-      return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text('Error: $errorMessage'),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _initializeMap,
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
     if (isLoadingLocation || initialPosition == null) {
       return const Scaffold(
         body: Center(
