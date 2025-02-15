@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_near/services/firestore.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter_near/services/location.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
@@ -9,21 +10,16 @@ import 'package:flutter_near/services/spatial_db.dart';
 import 'package:flutter_near/widgets/meeting_confirmation_sheet.dart';
 import 'dart:async';
 
-enum MapMode {
-  normal,
-  suggestMeeting,
-}
-
 class MapPage extends StatefulWidget {
-  final MapMode mode;
   final NearUser? friend;
   final NearUser? currentUser;
+  final Meeting? suggestedMeeting;  // Add this to show existing suggestion
 
   const MapPage({
     super.key,
-    this.mode = MapMode.normal,
     this.friend,
     this.currentUser,
+    this.suggestedMeeting,
   });
 
   @override
@@ -38,15 +34,25 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   bool isMapCreated = false;
   LatLng? initialPosition;
   bool _isCameraMoving = false;
-  Point? _selectedPOI;
   final Map<String, Set<Marker>> _cellMarkers = {}; // Track markers per cell
   final Set<Polygon> _cellPolygons = {};  // Add this for cell visualization
   static const int poisPerCell = 25;   // Show 50 POIs per cell
+  Meeting? _suggestedMeeting;  // Track current suggestion
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    
+    // Add suggested meeting marker if exists
+    if (widget.suggestedMeeting != null) {
+      _suggestedMeeting = widget.suggestedMeeting;
+      initialPosition = LatLng(
+        widget.suggestedMeeting!.location.latitude,
+        widget.suggestedMeeting!.location.longitude
+      );
+    }
+    
     _initializeMap();
   }
 
@@ -180,14 +186,11 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
       final cellMarkers = <Marker>{};
       for (var point in filteredPoints) {
-        cellMarkers.add(
-          Marker(
-            markerId: MarkerId('marker_${point.lon}_${point.lat}'),
-            position: LatLng(point.lat, point.lon),
-            icon: BitmapDescriptor.defaultMarker,
-            onTap: () => _onMarkerTapped(point),
-          ),
-        );
+        bool isCurrentSuggestion = _suggestedMeeting != null && 
+          point.lat == _suggestedMeeting!.location.latitude &&
+          point.lon == _suggestedMeeting!.location.longitude;
+        
+        cellMarkers.add(_createPOIMarker(point, isCurrentSuggestion: isCurrentSuggestion));
       }
 
       setState(() {
@@ -199,6 +202,17 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     }
   }
 
+  Marker _createPOIMarker(Point point, {bool isCurrentSuggestion = false}) {
+    return Marker(
+      markerId: MarkerId('marker_${point.lon}_${point.lat}'),
+      position: LatLng(point.lat, point.lon),
+      icon: isCurrentSuggestion ? 
+        BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue) :
+        BitmapDescriptor.defaultMarker,
+      onTap: () => _onMarkerTapped(point),
+    );
+  }
+
   void _onMarkerTapped(Point point) {
     showModalBottomSheet(
       context: context,
@@ -206,9 +220,48 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       backgroundColor: Colors.transparent,
       builder: (context) => MeetingConfirmationSheet(
         point: point,
-        onConfirm: () {
-          setState(() => _selectedPOI = point);
-          _suggestMeeting();
+        onConfirm: () async {
+          // If there's a previous suggestion, update its status
+          if (_suggestedMeeting != null) {
+            await FirestoreService().updateMeetingStatus(
+              _suggestedMeeting!.id, 
+              MeetingStatus.counterProposal
+            );
+          }
+
+          // Create new meeting suggestion
+          DocumentReference doc = FirebaseFirestore.instance
+            .collection('meetings')
+            .doc();
+
+          // Create new meeting suggestion
+          Meeting meeting = Meeting(
+            id: doc.id,
+            senderId: widget.currentUser!.uid,
+            receiverId: widget.friend!.uid,
+            location: GeoPoint(point.lat, point.lon),
+            time: DateTime.now().add(const Duration(days: 1)),
+            status: MeetingStatus.pending,
+          );
+
+          // Save to Firestore
+          await doc.set(meeting.toFirestore());
+
+          setState(() {
+            // Remove previous suggestion marker
+            if (_suggestedMeeting != null) {
+              Point previusPoint = Point(_suggestedMeeting!.location.longitude, _suggestedMeeting!.location.latitude);
+              _markers.removeWhere((m) => m.markerId.value == 'marker_${previusPoint.lon}_${previusPoint.lat}');
+              _markers.add(_createPOIMarker(previusPoint, isCurrentSuggestion: false));
+            }
+
+            // Update markers to show new suggestion
+            _markers.removeWhere((m) => m.markerId.value == 'marker_${point.lon}_${point.lat}');
+            _markers.add(_createPOIMarker(point, isCurrentSuggestion: true));
+
+            // Update current suggestion
+            _suggestedMeeting = meeting;
+          });
         },
       ),
     );
@@ -233,17 +286,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.mode == MapMode.suggestMeeting ? 
-          'Suggest Meeting with ${widget.friend?.username}' : 
-          'POIs Map'
-        ),
-        actions: [
-          if (widget.mode == MapMode.normal)
-            IconButton(
-              icon: const Icon(Icons.delete_sweep),
-              onPressed: _clearData,
-            ),
-        ],
+        title: Text('POIs Map'),
       ),
       body: Stack(
         children: [
@@ -287,55 +330,5 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         ],
       ),
     );
-  }
-
-  Future<void> _clearData() async {
-    setState(() {
-      isLoadingPOIs = true;
-    });
-    
-    await SpatialDb().emptyTable(SpatialDb.pois);
-    await SpatialDb().emptyTable(SpatialDb.cells);
-    
-    setState(() {
-      _markers = {};
-      _cellMarkers.clear();
-      _cellPolygons.clear();
-      isLoadingPOIs = false;
-    });
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('All data cleared'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
-  Future<void> _suggestMeeting() async {
-    if (_selectedPOI == null || widget.friend == null || widget.currentUser == null) return;
-
-    final meeting = Meeting(
-      id: '', // Firestore will generate
-      senderId: widget.currentUser!.uid,
-      receiverId: widget.friend!.uid,
-      location: GeoPoint(_selectedPOI!.lat, _selectedPOI!.lon),
-      time: DateTime.now().add(const Duration(days: 1)),
-      status: MeetingStatus.pending,
-    );
-
-    // Save to Firestore
-    await FirebaseFirestore.instance
-      .collection('meetings')
-      .add(meeting.toFirestore());
-
-    if (mounted) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Meeting suggestion sent!')),
-      );
-    }
   }
 } 

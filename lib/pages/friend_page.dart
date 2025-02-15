@@ -63,7 +63,6 @@ class FriendPage extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (context) => MapPage(
-                      mode: MapMode.suggestMeeting,
                       friend: friend,
                       currentUser: currentUser,
                     ),
@@ -121,35 +120,20 @@ class FriendPage extends StatelessWidget {
                             children: [
                               Text('Status: ${meeting.status.displayName}'),
                               Text('Time: ${meeting.time.toString()}'),
-                              if (meeting.message != null)
-                                Text('Message: ${meeting.message}'),
                             ],
                           ),
-                          trailing: meeting.status == MeetingStatus.pending && !isSender
-                              ? Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(LucideIcons.check),
-                                      color: Colors.green,
-                                      onPressed: () => _respondToMeeting(
-                                        context,
-                                        meeting,
-                                        MeetingStatus.accepted,
-                                      ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(LucideIcons.x),
-                                      color: Colors.red,
-                                      onPressed: () => _respondToMeeting(
-                                        context,
-                                        meeting,
-                                        MeetingStatus.rejected,
-                                      ),
-                                    ),
-                                  ],
-                                )
-                              : null,
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => MapPage(
+                                  friend: friend,
+                                  currentUser: currentUser,
+                                  suggestedMeeting: meeting,
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       );
                     },
@@ -161,33 +145,5 @@ class FriendPage extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  Future<void> _respondToMeeting(
-    BuildContext context,
-    Meeting meeting,
-    MeetingStatus newStatus,
-  ) async {
-    try {
-      await FirestoreService().updateMeetingStatus(
-        meeting.id,
-        newStatus,
-      );
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Meeting ${newStatus.displayName.toLowerCase()}'),
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error updating meeting status'),
-          ),
-        );
-      }
-    }
   }
 } 

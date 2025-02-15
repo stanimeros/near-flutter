@@ -8,7 +8,6 @@ class Meeting {
   final GeoPoint location;
   final DateTime time;
   final MeetingStatus status;
-  final String? message;
 
   Meeting({
     required this.id,
@@ -17,7 +16,6 @@ class Meeting {
     required this.location,
     required this.time,
     required this.status,
-    this.message,
   });
 
   factory Meeting.fromFirestore(DocumentSnapshot doc) {
@@ -32,7 +30,6 @@ class Meeting {
         (e) => e.toString() == 'MeetingStatus.${data['status']}',
         orElse: () => MeetingStatus.pending,
       ),
-      message: data['message'],
     );
   }
 
@@ -43,28 +40,7 @@ class Meeting {
       'location': location,
       'time': Timestamp.fromDate(time),
       'status': status.toString().split('.').last,
-      'message': message,
     };
-  }
-
-  Meeting copyWith({
-    String? id,
-    String? senderId,
-    String? receiverId,
-    GeoPoint? location,
-    DateTime? time,
-    MeetingStatus? status,
-    String? message,
-  }) {
-    return Meeting(
-      id: id ?? this.id,
-      senderId: senderId ?? this.senderId,
-      receiverId: receiverId ?? this.receiverId,
-      location: location ?? this.location,
-      time: time ?? this.time,
-      status: status ?? this.status,
-      message: message ?? this.message,
-    );
   }
 }
 
