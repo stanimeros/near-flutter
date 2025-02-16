@@ -6,20 +6,26 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 class MeetingConfirmationSheet extends StatefulWidget {
   final Point point;
-  final Function(DateTime) onConfirm;
-  final Function() onCancel;
   final Meeting? currentMeeting;
-  final bool isCurrentUser;
+  final String currentUserId;
   final bool isNewSuggestion;
+  final bool isCounterProposal;
+  final VoidCallback? onCancel;
+  final VoidCallback? onReject;
+  final VoidCallback? onAccept;
+  final Function(DateTime)? onConfirm;
 
   const MeetingConfirmationSheet({
     super.key,
     required this.point,
-    required this.onConfirm,
-    required this.onCancel,
     this.currentMeeting,
-    required this.isCurrentUser,
+    required this.currentUserId,
     required this.isNewSuggestion,
+    this.isCounterProposal = false,
+    this.onCancel,
+    this.onReject,
+    this.onAccept,
+    this.onConfirm,
   });
 
   @override
@@ -41,7 +47,9 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
   Widget build(BuildContext context) {
     if (!widget.isNewSuggestion && widget.currentMeeting != null) {
       final bool isPast = _isMeetingPast(widget.currentMeeting!.time);
-      final bool canInteract = widget.currentMeeting!.status == MeetingStatus.pending && !isPast;
+      final bool canInteract = (widget.currentMeeting!.status == MeetingStatus.pending || 
+                              widget.currentMeeting!.status == MeetingStatus.counterProposal) && 
+                              !isPast;
 
       return Container(
         width: double.infinity,
@@ -97,7 +105,7 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  if (widget.isCurrentUser)
+                  if (widget.currentUserId == widget.currentMeeting!.lastProposedBy)
                     ElevatedButton.icon(
                       onPressed: widget.onCancel,
                       icon: const Icon(LucideIcons.x, color: Colors.red),
@@ -107,13 +115,30 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
                       ),
                     )
                   else
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        widget.onConfirm(selectedDateTime);
-                      },
-                      icon: const Icon(LucideIcons.mapPin),
-                      label: const Text('Suggest New Location'),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.onReject != null)
+                          ElevatedButton.icon(
+                            onPressed: widget.onReject,
+                            icon: const Icon(LucideIcons.x, color: Colors.red),
+                            label: const Text('Reject'),
+                            style: ElevatedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                            ),
+                          ),
+                        if (widget.onReject != null && widget.onAccept != null)
+                          const SizedBox(width: 16),
+                        if (widget.onAccept != null)
+                          ElevatedButton.icon(
+                            onPressed: widget.onAccept,
+                            icon: const Icon(LucideIcons.check, color: Colors.green),
+                            label: const Text('Accept'),
+                            style: ElevatedButton.styleFrom(
+                              foregroundColor: Colors.green,
+                            ),
+                          ),
+                      ],
                     ),
                 ],
               ),
@@ -143,7 +168,7 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
             ),
           ),
           Text(
-            'Suggest meeting here?',
+            widget.isCounterProposal ? 'Counter-proposal?' : 'Create meeting here?',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 24),
@@ -176,10 +201,10 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
               await Future.delayed(const Duration(milliseconds: 500));
               if (context.mounted) {
                 Navigator.pop(context);
-                widget.onConfirm(selectedDateTime);
+                widget.onConfirm!(selectedDateTime);
               }
             },
-            child: const Text('Slide to confirm'),
+            child: Text(widget.isCounterProposal ? 'Slide to counter-propose' : 'Slide to create'),
           ),
         ],
       ),

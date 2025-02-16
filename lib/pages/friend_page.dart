@@ -49,6 +49,7 @@ class FriendPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: ValueKey('friend_page_${friend.uid}'),
       appBar: AppBar(
         scrolledUnderElevation: 0,
         backgroundColor: Colors.transparent,
@@ -139,10 +140,21 @@ class FriendPage extends StatelessWidget {
                   friend.uid,
                 ),
                 builder: (context, snapshot) {
+                  debugPrint('StreamBuilder rebuild: ${snapshot.connectionState}');
+                  
+                  if (snapshot.hasError) {
+                    debugPrint('StreamBuilder error: ${snapshot.error}');
+                    return Center(
+                      child: Text('Error: ${snapshot.error}'),
+                    );
+                  }
+
                   if (snapshot.connectionState == ConnectionState.waiting) {
+                    debugPrint('StreamBuilder waiting');
                     return const CustomLoader();
                   }
 
+                  debugPrint('StreamBuilder has data: ${snapshot.hasData}');
                   if (!snapshot.hasData || snapshot.data!.isEmpty) {
                     return Center(
                       child: Text(
@@ -154,10 +166,14 @@ class FriendPage extends StatelessWidget {
                     );
                   }
 
+                  final meetings = snapshot.data!;
+                  debugPrint('Building list with ${meetings.length} meetings');
+
                   return ListView.builder(
-                    itemCount: snapshot.data!.length,
+                    key: const PageStorageKey('meetings_list'),
+                    itemCount: meetings.length,
                     itemBuilder: (context, index) {
-                      final meeting = snapshot.data![index];
+                      final meeting = meetings[index];
                       final isSender = meeting.senderId == currentUser.uid;
 
                       return Card(

@@ -5,9 +5,12 @@ class Meeting {
   final String id;
   final String senderId;
   final String receiverId;
-  final GeoPoint location;
+  final DateTime createdAt;
   final DateTime time;
+  GeoPoint location;
   MeetingStatus status;
+  List<GeoPoint> previousLocations;
+  String lastProposedBy;
 
   Meeting({
     required this.id,
@@ -15,21 +18,28 @@ class Meeting {
     required this.receiverId,
     required this.location,
     required this.time,
+    required this.createdAt,
     required this.status,
-  });
+    this.previousLocations = const [],
+    String? lastProposedBy,
+  }) : lastProposedBy = lastProposedBy ?? senderId;
 
-  factory Meeting.fromFirestore(DocumentSnapshot doc) {
-    Map data = doc.data() as Map;
+  factory Meeting.fromFirestore(String id, Map<String, dynamic> data) {
     return Meeting(
-      id: doc.id,
-      senderId: data['senderId'] ?? '',
-      receiverId: data['receiverId'] ?? '',
-      location: data['location'] ?? const GeoPoint(0, 0),
-      time: data['time']?.toDate() ?? DateTime.now(),
+      id: id,
+      senderId: data['senderId'],
+      receiverId: data['receiverId'],
+      location: data['location'],
+      time: (data['time'] as Timestamp).toDate(),
+      createdAt: (data['createdAt'] as Timestamp).toDate(),
       status: MeetingStatus.values.firstWhere(
-        (e) => e.toString() == 'MeetingStatus.${data['status']}',
+        (e) => e.name == data['status'],
         orElse: () => MeetingStatus.pending,
       ),
+      previousLocations: (data['previousLocations'] as List?)
+          ?.map((loc) => loc as GeoPoint)
+          .toList() ?? [],
+      lastProposedBy: data['lastProposedBy'],
     );
   }
 
@@ -39,7 +49,10 @@ class Meeting {
       'receiverId': receiverId,
       'location': location,
       'time': Timestamp.fromDate(time),
-      'status': status.toString().split('.').last,
+      'createdAt': Timestamp.fromDate(createdAt),
+      'status': status.name,
+      'previousLocations': previousLocations,
+      'lastProposedBy': lastProposedBy,
     };
   }
 }

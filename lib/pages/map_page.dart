@@ -53,16 +53,31 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         widget.suggestedMeeting!.location.longitude
       );
       
-      // Check if we should show POIs
-      _shouldShowPOIs = widget.suggestedMeeting!.status == MeetingStatus.pending && 
-        widget.suggestedMeeting!.time.isBefore(DateTime.now());
+      // Show POIs only if:
+      // 1. Meeting is pending or counter-proposal AND
+      // 2. Current user is not the last person who proposed
+      _shouldShowPOIs = (widget.suggestedMeeting!.status == MeetingStatus.pending || 
+                         widget.suggestedMeeting!.status == MeetingStatus.counterProposal) &&
+                        widget.suggestedMeeting!.lastProposedBy != widget.currentUser!.uid;
 
-      // Add the meeting marker regardless of POI visibility
+      // Add the meeting marker and any previous locations
+      _markers = {};
+      
+      // Add previous location markers
+      for (var prevLocation in widget.suggestedMeeting!.previousLocations) {
+        Point prevPoint = Point(prevLocation.longitude, prevLocation.latitude);
+        _markers.add(_createPOIMarker(prevPoint, isPreviousPoint: true));
+      }
+      
+      // Add current location marker
       Point meetingPoint = Point(
         widget.suggestedMeeting!.location.longitude,
         widget.suggestedMeeting!.location.latitude
       );
-      _markers = {_createPOIMarker(meetingPoint, isCurrentSuggestion: true)};
+      _markers.add(_createPOIMarker(meetingPoint, isCurrentSuggestion: true));
+    } else {
+      // If no meeting exists, show POIs for creating new meeting
+      _shouldShowPOIs = true;
     }
     
     _initializeMap();
@@ -85,23 +100,34 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
   Future<void> _initializeMap() async {
     try {
-      // First get location
-      GeoPoint? pos = await LocationService().getCurrentPosition();
-
-      if (pos != null) {
+      // If we have a suggested meeting, use its location
+      if (widget.suggestedMeeting != null) {
         setState(() {
-          initialPosition = LatLng(pos.latitude, pos.longitude);
+          initialPosition = LatLng(
+            widget.suggestedMeeting!.location.latitude,
+            widget.suggestedMeeting!.location.longitude
+          );
           isLoadingLocation = false;
         });
-
-        // Once map is created and location is known, center the box
-        if (_mapController != null) {
-          _mapController!.animateCamera(
-            CameraUpdate.newLatLng(initialPosition!)
-          );
-        }
       } else {
-        throw Exception('Could not get location');
+        // Otherwise get current location
+        GeoPoint? pos = await LocationService().getCurrentPosition();
+
+        if (pos != null) {
+          setState(() {
+            initialPosition = LatLng(pos.latitude, pos.longitude);
+            isLoadingLocation = false;
+          });
+        } else {
+          throw Exception('Could not get location');
+        }
+      }
+
+      // Once map is created and location is known, center the camera
+      if (_mapController != null && initialPosition != null) {
+        _mapController!.animateCamera(
+          CameraUpdate.newLatLngZoom(initialPosition!, 17)  // Added zoom level
+        );
       }
     } catch (e) {
       setState(() {
@@ -134,7 +160,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   }
 
   Future<void> _loadPOIsInViewport() async {
-    if (_mapController == null) return;
+    if (_mapController == null || !_shouldShowPOIs) return;  // Skip if we shouldn't show POIs
 
     final LatLngBounds visibleBounds = await _mapController!.getVisibleRegion();
     final visibleBoundingBox = BoundingBox(
@@ -144,51 +170,54 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       visibleBounds.northeast.latitude
     );
     
-    // Add blue polygon for viewport
-    final viewportPolygon = Polygon(
-      polygonId: const PolygonId('viewport'),
-      points: [
-        visibleBounds.southwest,
-        LatLng(visibleBounds.southwest.latitude, visibleBounds.northeast.longitude),
-        visibleBounds.northeast,
-        LatLng(visibleBounds.northeast.latitude, visibleBounds.southwest.longitude),
-      ],
-      strokeColor: Colors.blue,
-      strokeWidth: 2,
-      fillColor: Colors.blue.withAlpha(50),
-    );
+    // Only show polygons and load cells if we're showing POIs
+    if (_shouldShowPOIs) {
+      // Add blue polygon for viewport
+      final viewportPolygon = Polygon(
+        polygonId: const PolygonId('viewport'),
+        points: [
+          visibleBounds.southwest,
+          LatLng(visibleBounds.southwest.latitude, visibleBounds.northeast.longitude),
+          visibleBounds.northeast,
+          LatLng(visibleBounds.northeast.latitude, visibleBounds.southwest.longitude),
+        ],
+        strokeColor: Colors.blue,
+        strokeWidth: 2,
+        fillColor: Colors.blue.withAlpha(50),
+      );
 
-    // Calculate all cells that intersect with viewport
-    final cellsInArea = await SpatialDb().getCellsInArea(visibleBoundingBox);
+      // Calculate all cells that intersect with viewport
+      final cellsInArea = await SpatialDb().getCellsInArea(visibleBoundingBox);
 
-    setState(() {
-      // Update viewport polygon
-      _cellPolygons.removeWhere((p) => p.polygonId == const PolygonId('viewport'));
-      _cellPolygons.add(viewportPolygon);
+      setState(() {
+        // Update viewport polygon
+        _cellPolygons.removeWhere((p) => p.polygonId == const PolygonId('viewport'));
+        _cellPolygons.add(viewportPolygon);
 
-      // Add red polygons for all cells in viewport
-      for (var cell in cellsInArea) {
-        final cellKey = '${cell.minLon},${cell.minLat}';
-        final cellPolygon = Polygon(
-            polygonId: PolygonId('cell_$cellKey'),
-            points: [
-              LatLng(cell.minLat, cell.minLon),
-              LatLng(cell.minLat, cell.maxLon),
-              LatLng(cell.maxLat, cell.maxLon),
-              LatLng(cell.maxLat, cell.minLon),
-            ],
-            strokeColor: Colors.red,
-            strokeWidth: 2,
-            fillColor: Colors.red.withAlpha(100),
-          );
-          _cellPolygons.add(cellPolygon);
+        // Add red polygons for all cells in viewport
+        for (var cell in cellsInArea) {
+          final cellKey = '${cell.minLon},${cell.minLat}';
+          final cellPolygon = Polygon(
+              polygonId: PolygonId('cell_$cellKey'),
+              points: [
+                LatLng(cell.minLat, cell.minLon),
+                LatLng(cell.minLat, cell.maxLon),
+                LatLng(cell.maxLat, cell.maxLon),
+                LatLng(cell.maxLat, cell.minLon),
+              ],
+              strokeColor: Colors.red,
+              strokeWidth: 2,
+              fillColor: Colors.red.withAlpha(100),
+            );
+            _cellPolygons.add(cellPolygon);
 
-          // Load POIs for this cell if not already loaded
-          if (!_cellMarkers.containsKey(cellKey)) {
-            _loadPOIsForCell(cellKey, cell);
-          }
-      }
-    });
+            // Load POIs for this cell if not already loaded
+            if (!_cellMarkers.containsKey(cellKey)) {
+              _loadPOIsForCell(cellKey, cell);
+            }
+        }
+      });
+    }
   }
     
   Future<void> _loadPOIsForCell(String cellKey, BoundingBox cell) async {
@@ -227,13 +256,25 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     }
   }
 
-  Marker _createPOIMarker(Point point, {bool isCurrentSuggestion = false}) {
-    if (isCurrentSuggestion && _suggestedMeeting != null) {
-      // Use different colors based on meeting status
+  Marker _createPOIMarker(Point point, {
+    bool isCurrentSuggestion = false,
+    bool isPreviousPoint = false,
+  }) {
+    // First check if this point matches the current meeting location
+    bool isCurrentMeetingPoint = _suggestedMeeting != null && 
+      point.lat == _suggestedMeeting!.location.latitude &&
+      point.lon == _suggestedMeeting!.location.longitude;
+
+    // Then check if this point is in the previous locations
+    bool isInPreviousLocations = _suggestedMeeting?.previousLocations.any((loc) => 
+      loc.latitude == point.lat && loc.longitude == point.lon) ?? false;
+
+    // If it's the current meeting point, show with status color
+    if (isCurrentMeetingPoint && _suggestedMeeting != null) {
       double hue;
       switch (_suggestedMeeting!.status) {
         case MeetingStatus.pending:
-          hue = BitmapDescriptor.hueYellow;  // Changed from hueOrange to hueYellow for better visibility
+          hue = BitmapDescriptor.hueYellow;
         case MeetingStatus.cancelled:
           hue = BitmapDescriptor.hueRed;
         case MeetingStatus.counterProposal:
@@ -251,7 +292,17 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       );
     }
 
-    // Regular POI marker in green
+    // If it's a previous location point, show in azure
+    if (isInPreviousLocations) {
+      return Marker(
+        markerId: MarkerId('marker_${point.lon}_${point.lat}'),
+        position: LatLng(point.lat, point.lon),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+        onTap: () => _onMarkerTapped(point),
+      );
+    }
+
+    // Otherwise it's a regular POI marker in green
     return Marker(
       markerId: MarkerId('marker_${point.lon}_${point.lat}'),
       position: LatLng(point.lat, point.lon),
@@ -260,27 +311,83 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     );
   }
 
-
   void _onMarkerTapped(Point point) {
     bool isCurrentPoint = _suggestedMeeting != null && 
       point.lat == _suggestedMeeting!.location.latitude &&
       point.lon == _suggestedMeeting!.location.longitude;
 
-    // If meeting is cancelled or past, only allow viewing the meeting marker
-    if (!_shouldShowPOIs && !isCurrentPoint) return;
+    // bool isCurrentUser = widget.currentUser!.uid == _suggestedMeeting?.senderId;
+    bool isLastProposer = widget.currentUser!.uid == _suggestedMeeting?.lastProposedBy;
 
+    // If there's no meeting yet, allow creating new meeting
+    if (_suggestedMeeting == null) {
+      _showMeetingSheet(point, isNewSuggestion: true);
+      return;
+    }
+
+    // If this is not the current meeting point
+    if (!isCurrentPoint) {
+      // Allow counter-proposal only for the person who didn't make the last proposal
+      if (!isLastProposer && 
+          (_suggestedMeeting!.status == MeetingStatus.pending || 
+           _suggestedMeeting!.status == MeetingStatus.counterProposal)) {
+        _showMeetingSheet(
+          point, 
+          isNewSuggestion: true,
+          isCounterProposal: true
+        );
+      }
+      return;
+    }
+
+    // For the current meeting point
+    if (_suggestedMeeting!.status == MeetingStatus.pending || 
+        _suggestedMeeting!.status == MeetingStatus.counterProposal) {
+      if (widget.currentUser!.uid == _suggestedMeeting!.lastProposedBy) {
+        // The person who made the last proposal can cancel
+        _showMeetingSheet(
+          point, 
+          isNewSuggestion: false,
+          allowCancel: true
+        );
+      } else {
+        // The person who didn't make the last proposal can accept or reject
+        _showMeetingSheet(
+          point, 
+          isNewSuggestion: false,
+          allowReject: true,
+          allowAccept: true
+        );
+      }
+    } else {
+      // For other statuses, just show info
+      _showMeetingSheet(
+        point, 
+        isNewSuggestion: false,
+        viewOnly: true
+      );
+    }
+  }
+
+  void _showMeetingSheet(Point point, {
+    bool isNewSuggestion = false,
+    bool allowCancel = false,
+    bool allowReject = false,
+    bool allowAccept = false,
+    bool viewOnly = false,
+    bool isCounterProposal = false,
+  }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => MeetingConfirmationSheet(
         point: point,
-        currentMeeting: isCurrentPoint ? _suggestedMeeting : null,
-        isCurrentUser: isCurrentPoint ? 
-          _suggestedMeeting!.senderId == widget.currentUser!.uid : true,
-        isNewSuggestion: !isCurrentPoint,
-        onCancel: () async {
-          // Only current user can cancel their pending meeting
+        currentMeeting: isNewSuggestion ? null : _suggestedMeeting,
+        currentUserId: widget.currentUser!.uid,
+        isNewSuggestion: isNewSuggestion,
+        isCounterProposal: isCounterProposal,
+        onCancel: allowCancel ? () async {
           await FirestoreService().updateMeetingStatus(
             _suggestedMeeting!.id,
             MeetingStatus.cancelled
@@ -290,9 +397,42 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
             _suggestedMeeting!.status = MeetingStatus.cancelled;
             _shouldShowPOIs = false;
             
+            // Keep existing markers but update the current one's status
+            Point meetingPoint = Point(
+              _suggestedMeeting!.location.longitude,
+              _suggestedMeeting!.location.latitude
+            );
+            
+            // Update only the current marker
+            _markers.removeWhere((m) => m.markerId.value == 'marker_${meetingPoint.lon}_${meetingPoint.lat}');
+            _markers.add(_createPOIMarker(meetingPoint, isCurrentSuggestion: true));
+          });
+
+          if (context.mounted) {
+            Navigator.pop(context);
+          }
+        } : null,
+        onReject: allowReject ? () async {
+          await FirestoreService().updateMeetingStatus(
+            _suggestedMeeting!.id,
+            MeetingStatus.rejected
+          );
+
+          setState(() {
+            _suggestedMeeting!.status = MeetingStatus.rejected;
+            _shouldShowPOIs = false;
+            
+            // Clear all markers first
             _markers.clear();
             _cellMarkers.clear();
             
+            // Add previous location markers
+            for (var prevLocation in _suggestedMeeting!.previousLocations) {
+              Point prevPoint = Point(prevLocation.longitude, prevLocation.latitude);
+              _markers.add(_createPOIMarker(prevPoint, isPreviousPoint: true));
+            }
+            
+            // Add current location marker with rejected status
             Point meetingPoint = Point(
               _suggestedMeeting!.location.longitude,
               _suggestedMeeting!.location.latitude
@@ -303,79 +443,105 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
           if (context.mounted) {
             Navigator.pop(context);
           }
-        },
-        onConfirm: (selectedTime) async {
-          if (isCurrentPoint) {
-            // Friend making counter proposal
-            DocumentReference doc = FirebaseFirestore.instance
+        } : null,
+        onAccept: allowAccept ? () async {
+          await FirestoreService().updateMeetingStatus(
+            _suggestedMeeting!.id,
+            MeetingStatus.accepted
+          );
+
+          setState(() {
+            _suggestedMeeting!.status = MeetingStatus.accepted;
+            _shouldShowPOIs = false;
+            
+            // Clear all markers first
+            _markers.clear();
+            _cellMarkers.clear();
+            
+            // Add previous location markers
+            for (var prevLocation in _suggestedMeeting!.previousLocations) {
+              Point prevPoint = Point(prevLocation.longitude, prevLocation.latitude);
+              _markers.add(_createPOIMarker(prevPoint, isPreviousPoint: true));
+            }
+            
+            // Add current location marker with accepted status
+            Point meetingPoint = Point(
+              _suggestedMeeting!.location.longitude,
+              _suggestedMeeting!.location.latitude
+            );
+            _markers.add(_createPOIMarker(meetingPoint, isCurrentSuggestion: true));
+          });
+
+          if (context.mounted) {
+            Navigator.pop(context);
+          }
+        } : null,
+        onConfirm: !viewOnly ? (selectedTime) async {
+          if (isCounterProposal) {
+            List<GeoPoint> previousLocations = [
+              ..._suggestedMeeting!.previousLocations,
+              _suggestedMeeting!.location,
+            ];
+
+            await FirebaseFirestore.instance
               .collection('meetings')
-              .doc();
-
-            // Mark original meeting as counter-proposed
-            await FirestoreService().updateMeetingStatus(
-              _suggestedMeeting!.id,
-              MeetingStatus.counterProposal
-            );
-
-            // Create new pending meeting
-            Meeting meeting = Meeting(
-              id: doc.id,
-              senderId: widget.currentUser!.uid,
-              receiverId: widget.friend!.uid,
-              location: GeoPoint(point.lat, point.lon),
-              time: selectedTime,
-              status: MeetingStatus.pending,
-            );
-
-            await doc.set(meeting.toFirestore());
+              .doc(_suggestedMeeting!.id)
+              .update({
+                'status': MeetingStatus.counterProposal.name,
+                'location': GeoPoint(point.lat, point.lon),
+                'time': Timestamp.fromDate(selectedTime),
+                'previousLocations': previousLocations,
+                'lastProposedBy': widget.currentUser!.uid,  // Update who made the last proposal
+              });
 
             setState(() {
-              // Update original meeting marker to purple
-              Point previousPoint = Point(
-                _suggestedMeeting!.location.longitude,
-                _suggestedMeeting!.location.latitude
-              );
-              _markers.removeWhere((m) => m.markerId.value == 'marker_${previousPoint.lon}_${previousPoint.lat}');
-              _markers.add(_createPOIMarker(previousPoint, isCurrentSuggestion: true));
-
-              // Add new pending meeting marker (yellow)
-              _markers.removeWhere((m) => m.markerId.value == 'marker_${point.lon}_${point.lat}');
-              _markers.add(_createPOIMarker(point, isCurrentSuggestion: true));
-
-              _suggestedMeeting = meeting;
-            });
-          } else {
-            // Current user making new suggestion
-            DocumentReference doc = FirebaseFirestore.instance
-              .collection('meetings')
-              .doc();
-
-            Meeting meeting = Meeting(
-              id: doc.id,
-              senderId: widget.currentUser!.uid,
-              receiverId: widget.friend!.uid,
-              location: GeoPoint(point.lat, point.lon),
-              time: selectedTime,
-              status: MeetingStatus.pending,
-            );
-
-            // First update Firestore
-            await doc.set(meeting.toFirestore());
-
-            setState(() {
-              // First update the current meeting
-              _suggestedMeeting = meeting;
+              _suggestedMeeting!.status = MeetingStatus.counterProposal;
+              _suggestedMeeting!.location = GeoPoint(point.lat, point.lon);
+              _suggestedMeeting!.previousLocations = previousLocations;
+              _suggestedMeeting!.lastProposedBy = widget.currentUser!.uid;
+              _shouldShowPOIs = false;
               
-              // Then clear markers and update POI visibility
+              // Update markers to show history
               _markers.clear();
               _cellMarkers.clear();
-              _shouldShowPOIs = false;
+              
+              // Add previous location markers
+              for (var prevLocation in previousLocations) {
+                Point prevPoint = Point(prevLocation.longitude, prevLocation.latitude);
+                _markers.add(_createPOIMarker(prevPoint, isPreviousPoint: true));
+              }
+              
+              // Add current location marker
+              _markers.add(_createPOIMarker(point, isCurrentSuggestion: true));
+            });
+          } else {
+            // Making new suggestion
+            DocumentReference doc = FirebaseFirestore.instance
+              .collection('meetings')
+              .doc();
 
-              // Finally add the new marker - now it will use the correct status color
+            Meeting meeting = Meeting(
+              id: doc.id,
+              senderId: widget.currentUser!.uid,
+              receiverId: widget.friend!.uid,
+              location: GeoPoint(point.lat, point.lon),
+              time: selectedTime,
+              createdAt: DateTime.now(),
+              status: MeetingStatus.pending,
+            );
+
+            await doc.set(meeting.toFirestore());
+
+            setState(() {
+              _suggestedMeeting = meeting;
+              _shouldShowPOIs = false;
+              
+              _markers.clear();
+              _cellMarkers.clear();
               _markers.add(_createPOIMarker(point, isCurrentSuggestion: true));
             });
           }
-        },
+        } : null,
       ),
     );
   }

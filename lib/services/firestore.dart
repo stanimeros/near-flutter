@@ -237,21 +237,40 @@ class FirestoreService {
     }
   }
 
-  Stream<List<Meeting>> getMeetingsWithFriend(String userId, String friendId) {
-    return firestore
+  Stream<List<Meeting>> getMeetingsWithFriend(String currentUserId, String friendId) {
+    debugPrint('Starting getMeetingsWithFriend stream for $currentUserId and $friendId');
+    
+    return FirebaseFirestore.instance
       .collection('meetings')
-      .where('senderId', whereIn: [userId, friendId])
-      .where('receiverId', whereIn: [userId, friendId])
+      .where(Filter.or(
+        Filter.and(
+          Filter('senderId', isEqualTo: currentUserId),
+          Filter('receiverId', isEqualTo: friendId),
+        ),
+        Filter.and(
+          Filter('senderId', isEqualTo: friendId),
+          Filter('receiverId', isEqualTo: currentUserId),
+        ),
+      ))
+      .orderBy('createdAt', descending: true)
       .snapshots()
-      .map((snapshot) => snapshot.docs
-        .map((doc) => Meeting.fromFirestore(doc))
-        .toList());
+      .map((snapshot) {
+        debugPrint('Received snapshot with ${snapshot.docs.length} documents');
+        final meetings = snapshot.docs
+          .map((doc) {
+            debugPrint('Processing doc ${doc.id}: ${doc.data()}');
+            return Meeting.fromFirestore(doc.id, doc.data());
+          })
+          .toList();
+        debugPrint('Returning ${meetings.length} meetings');
+        return meetings;
+      });
   }
 
   Future<void> updateMeetingStatus(String meetingId, MeetingStatus newStatus) {
     return firestore
       .collection('meetings')
       .doc(meetingId)
-      .update({'status': newStatus.toString().split('.').last});
+      .update({'status': newStatus.name});
   }
 }
