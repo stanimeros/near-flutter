@@ -238,8 +238,6 @@ class FirestoreService {
   }
 
   Stream<List<Meeting>> getMeetingsWithFriend(String currentUserId, String friendId) {
-    debugPrint('Starting getMeetingsWithFriend stream for $currentUserId and $friendId');
-    
     return FirebaseFirestore.instance
       .collection('meetings')
       .where(Filter.or(
@@ -255,14 +253,11 @@ class FirestoreService {
       .orderBy('createdAt', descending: true)
       .snapshots()
       .map((snapshot) {
-        debugPrint('Received snapshot with ${snapshot.docs.length} documents');
         final meetings = snapshot.docs
           .map((doc) {
-            debugPrint('Processing doc ${doc.id}: ${doc.data()}');
             return Meeting.fromFirestore(doc.id, doc.data());
           })
           .toList();
-        debugPrint('Returning ${meetings.length} meetings');
         return meetings;
       });
   }

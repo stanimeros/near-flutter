@@ -140,8 +140,6 @@ class FriendPage extends StatelessWidget {
                   friend.uid,
                 ),
                 builder: (context, snapshot) {
-                  debugPrint('StreamBuilder rebuild: ${snapshot.connectionState}');
-                  
                   if (snapshot.hasError) {
                     debugPrint('StreamBuilder error: ${snapshot.error}');
                     return Center(
@@ -150,11 +148,9 @@ class FriendPage extends StatelessWidget {
                   }
 
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    debugPrint('StreamBuilder waiting');
                     return const CustomLoader();
                   }
 
-                  debugPrint('StreamBuilder has data: ${snapshot.hasData}');
                   if (!snapshot.hasData || snapshot.data!.isEmpty) {
                     return Center(
                       child: Text(
@@ -167,7 +163,6 @@ class FriendPage extends StatelessWidget {
                   }
 
                   final meetings = snapshot.data!;
-                  debugPrint('Building list with ${meetings.length} meetings');
 
                   return ListView.builder(
                     key: const PageStorageKey('meetings_list'),

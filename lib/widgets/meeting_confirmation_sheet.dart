@@ -105,7 +105,7 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  if (widget.currentUserId == widget.currentMeeting!.lastProposedBy)
+                  if (widget.currentUserId == widget.currentMeeting!.senderId)
                     ElevatedButton.icon(
                       onPressed: widget.onCancel,
                       icon: const Icon(LucideIcons.x, color: Colors.red),

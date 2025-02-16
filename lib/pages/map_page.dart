@@ -58,7 +58,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       // 2. Current user is not the last person who proposed
       _shouldShowPOIs = (widget.suggestedMeeting!.status == MeetingStatus.pending || 
                          widget.suggestedMeeting!.status == MeetingStatus.counterProposal) &&
-                        widget.suggestedMeeting!.lastProposedBy != widget.currentUser!.uid;
+                        widget.suggestedMeeting!.senderId != widget.currentUser!.uid;
 
       // Add the meeting marker and any previous locations
       _markers = {};
@@ -316,8 +316,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       point.lat == _suggestedMeeting!.location.latitude &&
       point.lon == _suggestedMeeting!.location.longitude;
 
-    // bool isCurrentUser = widget.currentUser!.uid == _suggestedMeeting?.senderId;
-    bool isLastProposer = widget.currentUser!.uid == _suggestedMeeting?.lastProposedBy;
+    bool isLastProposer = widget.currentUser!.uid == _suggestedMeeting?.senderId;
 
     // If there's no meeting yet, allow creating new meeting
     if (_suggestedMeeting == null) {
@@ -343,7 +342,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     // For the current meeting point
     if (_suggestedMeeting!.status == MeetingStatus.pending || 
         _suggestedMeeting!.status == MeetingStatus.counterProposal) {
-      if (widget.currentUser!.uid == _suggestedMeeting!.lastProposedBy) {
+      if (widget.currentUser!.uid == _suggestedMeeting!.senderId) {
         // The person who made the last proposal can cancel
         _showMeetingSheet(
           point, 
@@ -491,14 +490,16 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
                 'location': GeoPoint(point.lat, point.lon),
                 'time': Timestamp.fromDate(selectedTime),
                 'previousLocations': previousLocations,
-                'lastProposedBy': widget.currentUser!.uid,  // Update who made the last proposal
+                'senderId': widget.currentUser!.uid,
+                'receiverId': widget.friend!.uid,
               });
 
             setState(() {
               _suggestedMeeting!.status = MeetingStatus.counterProposal;
               _suggestedMeeting!.location = GeoPoint(point.lat, point.lon);
               _suggestedMeeting!.previousLocations = previousLocations;
-              _suggestedMeeting!.lastProposedBy = widget.currentUser!.uid;
+              _suggestedMeeting!.senderId = widget.currentUser!.uid;
+              _suggestedMeeting!.receiverId = widget.friend!.uid;
               _shouldShowPOIs = false;
               
               // Update markers to show history

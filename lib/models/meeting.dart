@@ -3,14 +3,13 @@ import 'package:flutter/material.dart';
 
 class Meeting {
   final String id;
-  final String senderId;
-  final String receiverId;
-  final DateTime createdAt;
-  final DateTime time;
+  String senderId;
+  String receiverId;
+  DateTime time;
   GeoPoint location;
   MeetingStatus status;
   List<GeoPoint> previousLocations;
-  String lastProposedBy;
+  final DateTime createdAt;
 
   Meeting({
     required this.id,
@@ -21,8 +20,7 @@ class Meeting {
     required this.createdAt,
     required this.status,
     this.previousLocations = const [],
-    String? lastProposedBy,
-  }) : lastProposedBy = lastProposedBy ?? senderId;
+  });
 
   factory Meeting.fromFirestore(String id, Map<String, dynamic> data) {
     return Meeting(
@@ -39,7 +37,6 @@ class Meeting {
       previousLocations: (data['previousLocations'] as List?)
           ?.map((loc) => loc as GeoPoint)
           .toList() ?? [],
-      lastProposedBy: data['lastProposedBy'],
     );
   }
 
@@ -52,7 +49,6 @@ class Meeting {
       'createdAt': Timestamp.fromDate(createdAt),
       'status': status.name,
       'previousLocations': previousLocations,
-      'lastProposedBy': lastProposedBy,
     };
   }
 }
