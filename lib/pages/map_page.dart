@@ -36,7 +36,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   bool _isCameraMoving = false;
   final Map<String, Set<Marker>> _cellMarkers = {}; // Track markers per cell
   final Set<Polygon> _cellPolygons = {};  // Add this for cell visualization
-  static const int poisPerCell = 25;   // Show 50 POIs per cell
+  // static const int poisPerCell = 25;   // Show 50 POIs per cell
   Meeting? _suggestedMeeting;  // Track current suggestion
   bool _shouldShowPOIs = true;  // Add this to control POI visibility
 
@@ -222,11 +222,12 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     
   Future<void> _loadPOIsForCell(String cellKey, BoundingBox cell) async {
     try {
-      final points = await SpatialDb().getPointsInBoundingBox(cell);
-      final filteredPoints = points.take(poisPerCell).toList();
+      // final points = await SpatialDb().getPointsInBoundingBox(cell);
+      final points = await SpatialDb().getClusters(cell);
+      // final filteredPoints = points.take(poisPerCell).toList();
 
       final cellMarkers = <Marker>{};
-      for (var point in filteredPoints) {
+      for (var point in points) {
         bool isCurrentSuggestion = _suggestedMeeting != null && 
           point.lat == _suggestedMeeting!.location.latitude &&
           point.lon == _suggestedMeeting!.location.longitude;

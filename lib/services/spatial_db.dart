@@ -191,7 +191,7 @@ class SpatialDb {
           if (!existingSet.contains(cellKey)) {
             debugPrint('Downloading new cell $cellKey: ${cellBounds.minLon},${cellBounds.minLat} to ${cellBounds.maxLon},${cellBounds.maxLat}');
             await addCellToDb(lon, lat);
-            await downloadPointsFromOSM(cellBounds);
+            await downloadPointsFromServer(cellBounds);
           }
           
           cellsInArea.add(cellBounds);
@@ -264,6 +264,32 @@ class SpatialDb {
     );
   }
 
+  Future<void> downloadPointsFromServer(BoundingBox boundingBox) async {
+    String api = 'http://snf-78417.ok-kno.grnetcloud.net:5000/api/points?minLon=${boundingBox.minLon}&minLat=${boundingBox.minLat}&maxLon=${boundingBox.maxLon}&maxLat=${boundingBox.maxLat}';
+    final response = await http.get(Uri.parse(api));
+    final document = jsonDecode(response.body);
+    final points = document['points'].map((node) {
+      return {'lon': node['longitude'] as double, 'lat': node['latitude'] as double};
+    }).toList();
+    debugPrint('Got ${points.length} points');
+
+    if (points.isEmpty) return;
+
+    jts.GeometryFactory gf = jts.GeometryFactory.defaultPrecision();
+    final values = points.map((p) => "(?)").join(",");
+    final arguments = points.map((p) {
+      jts.Point point = gf.createPoint(jts.Coordinate(p['lon']!, p['lat']!));
+      return GeoPkgGeomWriter().write(point);
+    }).toList();
+    
+    if (arguments.isNotEmpty) {
+      db.execute(
+        "INSERT OR IGNORE INTO ${pois.fixedName} (geopoint) VALUES $values",
+        arguments: arguments
+      );
+    }
+  }
+
   Future<void> downloadPointsFromOSM(BoundingBox boundingBox) async {
     // Format coordinates with 6 decimal places for precision
     String api = 'https://overpass-api.de/api/interpreter?data=[out:json];'
@@ -300,6 +326,34 @@ class SpatialDb {
       }
     } catch (e) {
       debugPrint('Error downloading points: $e');
+    }
+  }
+
+  Future<List<Point>> getClusters(BoundingBox boundingBox) async {
+    try {
+      final response = await http.get(
+        Uri.parse('http://snf-78417.ok-kno.grnetcloud.net:5000/api/clusters'
+          '?minLon=${boundingBox.minLon}'
+          '&minLat=${boundingBox.minLat}'
+          '&maxLon=${boundingBox.maxLon}'
+          '&maxLat=${boundingBox.maxLat}'
+          '&clusters=20'),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['clusters'].map<Point>((cluster) {
+          return Point(
+            cluster['longitude'],
+            cluster['latitude'],
+          );
+        }).toList();
+      } else {
+        throw Exception('Failed to fetch clusters: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error getting clusters: $e');
+      return [];
     }
   }
 }
