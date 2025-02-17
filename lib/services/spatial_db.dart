@@ -125,10 +125,11 @@ class SpatialDb {
     }
   }
 
-  Future<void> addCellToDb(int minLon, int minLat) async {
-    debugPrint('Adding cell to db: $minLon, $minLat');
+  Future<void> addCellToDb(BoundingBox boundingBox, double gridSize) async {
+    String cellKey = getCellKey(boundingBox, gridSize);
+    debugPrint('Adding cell to db: $cellKey');
     String sql = "INSERT OR IGNORE INTO ${cells.fixedName} (cell_min_lon, cell_min_lat) VALUES (?, ?);";
-    db.execute(sql, arguments: [minLon, minLat]);
+    db.execute(sql, arguments: [boundingBox.minLon / gridSize, boundingBox.minLat / gridSize]);
   }
 
   Future<List<BoundingBox>> getCellsInArea(BoundingBox boundingBox, double gridSize) async {
@@ -191,7 +192,7 @@ class SpatialDb {
       // Count cells that need downloading
       int cellsToDownload = 0;
       for (BoundingBox cell in cellsInArea) {
-        final cellKey = '${(cell.minLon / gridSize).floor() * 1000},${(cell.minLat / gridSize).floor() * 1000}';
+        final cellKey = getCellKey(cell, gridSize);
         if (!existingSet.contains(cellKey)) {
           cellsToDownload++;
         }
@@ -204,11 +205,11 @@ class SpatialDb {
 
       // Process each cell in the grid
       for (BoundingBox cell in cellsInArea) {
-        final cellKey = '${(cell.minLon / gridSize).floor() * 1000},${(cell.minLat / gridSize).floor() * 1000}';
+        final cellKey = getCellKey(cell, gridSize);
 
         if (!existingSet.contains(cellKey)) {
           debugPrint('Downloading new cell $cellKey: ${cell.minLon},${cell.minLat} to ${cell.maxLon},${cell.maxLat}');
-          await addCellToDb((cell.minLon / gridSize).floor(), (cell.minLat / gridSize).floor());
+          await addCellToDb(cell, gridSize);
           List<Point> points = await downloadPointsFromServer(cell);
           if (points.isEmpty) {
             points = await downloadPointsFromOSM(cell);
@@ -223,6 +224,10 @@ class SpatialDb {
       debugPrint('Error in downloadCellsInArea: $e');
     }
     return [];
+  }
+
+  String getCellKey(BoundingBox boundingBox, double gridSize) {
+    return '${(boundingBox.minLon / gridSize).floor()},${(boundingBox.minLat / gridSize).floor()}';
   }
 
   // Function to get points within a bounding box
