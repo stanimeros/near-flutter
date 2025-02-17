@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_near/services/firestore.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:flutter_near/widgets/pick_profile_picture.dart';
-import 'package:flutter_near/widgets/popup.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -107,6 +106,36 @@ class _ProfilePageState extends State<ProfilePage> {
     });
 
     return newProfilePicture;
+  }
+
+  Future<void> _confirmSignOut(BuildContext context) async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sign Out'),
+        content: const Text('Are you sure you want to sign out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Sign Out'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await FirebaseAuth.instance.signOut();
+      if (context.mounted) {
+        Navigator.pop(context);
+      }
+    }
   }
 
   @override
@@ -221,21 +250,7 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           const Spacer(),
           ElevatedButton(
-            onPressed: () async {
-              AlertDialog popUp = PopUp(
-                funBtn1: () {
-                  Navigator.pop(context);
-                  FirebaseAuth.instance.signOut();
-                },
-                funBtn2: () {
-                  Navigator.pop(context);
-                },
-              );
-              showDialog(
-                context: context,
-                builder: (BuildContext context) => popUp,
-              );
-            },
+            onPressed: () => _confirmSignOut(context),
             child: const Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [

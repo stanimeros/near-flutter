@@ -53,6 +53,14 @@ class Meeting {
   }
 }
 
+String formatDateTime(DateTime dateTime) {
+  return '${dateTime.day}/${dateTime.month}/${dateTime.year} at ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
+}
+
+bool isMeetingPast(DateTime time) {
+  return time.isBefore(DateTime.now());
+}
+
 enum MeetingStatus {
   pending,
   accepted,

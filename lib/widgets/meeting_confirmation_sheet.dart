@@ -35,14 +35,6 @@ class MeetingConfirmationSheet extends StatefulWidget {
 class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
   DateTime selectedDateTime = DateTime.now().add(const Duration(days: 1));
 
-  String _formatDateTime(DateTime dateTime) {
-    return '${dateTime.day}/${dateTime.month}/${dateTime.year} at ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
-  }
-
-  bool _isMeetingPast(DateTime time) {
-    return time.isBefore(DateTime.now());
-  }
-
   @override
   Widget build(BuildContext context) {
     if (!widget.isNewSuggestion && widget.currentMeeting != null) {
@@ -66,7 +58,7 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
               height: 4,
               margin: const EdgeInsets.only(bottom: 24),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.outline.withAlpha(100),
+                color: Theme.of(context).colorScheme.outline.withAlpha(50),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -85,10 +77,42 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
               ],
             ),
             const SizedBox(height: 16),
-            Text(
-              _formatDateTime(widget.currentMeeting!.time),
-              style: Theme.of(context).textTheme.bodyLarge,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  formatDateTime(widget.currentMeeting!.time),
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: widget.currentMeeting!.status.color.withAlpha(50),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    widget.currentMeeting!.status.displayName,
+                    style: TextStyle(
+                      color: widget.currentMeeting!.status.color,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
             ),
+            const SizedBox(height: 8),
+            Text(
+              'Created on: ${formatDateTime(widget.currentMeeting!.createdAt)}',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 8),
+            if (widget.isNewSuggestion || widget.isCounterProposal)
+              ElevatedButton(
+                onPressed: () => _showDateTimePicker(context),
+                child: const Text('Change Date & Time'),
+              ),
             if (isPast)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
@@ -163,7 +187,7 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
             height: 4,
             margin: const EdgeInsets.only(bottom: 24),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.outline.withAlpha(100),
+              color: Theme.of(context).colorScheme.outline.withAlpha(50),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -172,13 +196,16 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 24),
-          ListTile(
-            leading: const Icon(LucideIcons.calendar),
-            title: Text(
-              'Meeting time: ${_formatDateTime(selectedDateTime)}',
-            ),
-            onTap: () => _showDateTimePicker(context),
+          Text(
+            formatDateTime(selectedDateTime),
+            style: Theme.of(context).textTheme.bodyLarge,
           ),
+          const SizedBox(height: 8),
+          if (widget.isNewSuggestion || widget.isCounterProposal)
+            ElevatedButton(
+              onPressed: () => _showDateTimePicker(context),
+              child: const Text('Change Date & Time'),
+            ),
           const SizedBox(height: 24),
           ActionSlider.standard(
             width: MediaQuery.of(context).size.width - 48,
@@ -237,5 +264,9 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
         });
       }
     }
+  }
+
+  bool _isMeetingPast(DateTime meetingTime) {
+    return meetingTime.isBefore(DateTime.now());
   }
 } 

@@ -206,7 +206,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               ],
               strokeColor: Colors.red,
               strokeWidth: 2,
-              fillColor: Colors.red.withAlpha(100),
+              fillColor: Colors.red.withAlpha(50),
             );
             _cellPolygons.add(cellPolygon);
 
@@ -274,7 +274,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       double hue;
       switch (_suggestedMeeting!.status) {
         case MeetingStatus.pending:
-          hue = BitmapDescriptor.hueYellow;
+          hue = BitmapDescriptor.hueOrange;
         case MeetingStatus.cancelled:
           hue = BitmapDescriptor.hueRed;
         case MeetingStatus.counterProposal:
@@ -592,7 +592,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
             ),
           if (isLoadingPOIs && _shouldShowPOIs) // Only show loading if showing POIs
             Container(
-              color: Colors.black.withAlpha(100),
+              color: Colors.black.withAlpha(50),
               child: const Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,

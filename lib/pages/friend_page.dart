@@ -87,18 +87,14 @@ class FriendPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Distance info
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(12),
-              ),
+            Center(
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Icon(LucideIcons.map),
                   const SizedBox(width: 12),
                   Text(
-                    currentUser.getConvertedDistanceBetweenUser(friend),
+                    'Currently ${currentUser.getConvertedDistanceBetweenUser(friend)} away',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ],
@@ -109,7 +105,7 @@ class FriendPage extends StatelessWidget {
             // Suggest Meeting Button
             SizedBox(
               width: double.infinity,
-              child: FilledButton.icon(
+              child: ElevatedButton(
                 onPressed: () {
                   Navigator.push(
                     context,
@@ -121,8 +117,14 @@ class FriendPage extends StatelessWidget {
                     ),
                   );
                 },
-                icon: const Icon(LucideIcons.mapPin),
-                label: const Text('Suggest Meeting'),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(LucideIcons.mapPin),
+                    SizedBox(width: 8),
+                    Text('Suggest Meeting'),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 24),
@@ -172,19 +174,44 @@ class FriendPage extends StatelessWidget {
                       final isSender = meeting.senderId == currentUser.uid;
 
                       return Card(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                        clipBehavior: Clip.antiAlias,
                         child: ListTile(
                           leading: Icon(
                             isSender ? LucideIcons.arrowRight : LucideIcons.arrowLeft,
                             color: meeting.status.color,
                           ),
-                          title: Text(
-                            isSender ? 'You suggested' : 'Friend suggested',
+                          title: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                isSender ? 'You suggested' : '${friend.username} suggested',
+                              ),
+                              // Smaller Badge for meeting status
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: meeting.status.color.withAlpha(50),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  meeting.status.displayName,
+                                  style: TextStyle(
+                                    color: meeting.status.color,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Status: ${meeting.status.displayName}'),
-                              Text('Time: ${meeting.time.toString()}'),
+                              Text('Time: ${formatDateTime(meeting.time)}'),
+                              Text('Created on: ${formatDateTime(meeting.createdAt)}'),
                             ],
                           ),
                           onTap: () {
