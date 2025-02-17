@@ -186,7 +186,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       );
 
       // Calculate all cells that intersect with viewport
-      final cellsInArea = await SpatialDb().getCellsInArea(visibleBoundingBox);
+      final gridSize = (visibleBoundingBox.maxLon - visibleBoundingBox.minLon) * 2;
+      final cellsInArea = await SpatialDb().getCellsInArea(visibleBoundingBox, gridSize);
 
       setState(() {
         // Update viewport polygon

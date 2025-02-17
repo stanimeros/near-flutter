@@ -36,7 +36,6 @@ class BoundingBox {
 class SpatialDb {
   static late GeopackageDb db;
   static const int clusters = 20;
-  static const double gridSize = 0.005;
   static const double metersPerDegree = 111000.0;
   static String dbFilename = 'points.gpkg';
   static TableName pois = TableName("pois", schemaSupported: false);
@@ -132,7 +131,7 @@ class SpatialDb {
     db.execute(sql, arguments: [minLon, minLat]);
   }
 
-  Future<List<BoundingBox>> getCellsInArea(BoundingBox boundingBox) async {
+  Future<List<BoundingBox>> getCellsInArea(BoundingBox boundingBox, double gridSize) async {
     List<BoundingBox> cellsInArea = [];
     try {
       // Calculate cell indices
@@ -164,9 +163,10 @@ class SpatialDb {
   }
 
   Future<List<BoundingBox>> downloadCellsInArea(BoundingBox boundingBox) async {
+    double gridSize = 0.005;
     List<BoundingBox> cellsInArea = [];
     try {
-      cellsInArea = await getCellsInArea(boundingBox);
+      cellsInArea = await getCellsInArea(boundingBox, gridSize);
       
       // Calculate cell indices for the query
       int minLonCell = (boundingBox.minLon / gridSize).floor();
