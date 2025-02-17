@@ -127,6 +127,7 @@ class SpatialDb {
   }
 
   Future<void> addCellToDb(int minLon, int minLat) async {
+    debugPrint('Adding cell to db: $minLon, $minLat');
     String sql = "INSERT OR IGNORE INTO ${cells.fixedName} (cell_min_lon, cell_min_lat) VALUES (?, ?);";
     db.execute(sql, arguments: [minLon, minLat]);
   }
@@ -167,9 +168,15 @@ class SpatialDb {
     try {
       cellsInArea = await getCellsInArea(boundingBox);
       
-      // Get existing cells - adjust the query to use multiplied coordinates
+      // Calculate cell indices for the query
+      int minLonCell = (boundingBox.minLon / gridSize).floor();
+      int maxLonCell = (boundingBox.maxLon / gridSize).floor();
+      int minLatCell = (boundingBox.minLat / gridSize).floor();
+      int maxLatCell = (boundingBox.maxLat / gridSize).floor();
+      
+      // Get existing cells using the cell indices
       final existingCells = db.select(
-        'SELECT cell_min_lon, cell_min_lat FROM ${cells.fixedName} WHERE cell_min_lon BETWEEN ${boundingBox.minLon * 1000} AND ${boundingBox.maxLon * 1000} AND cell_min_lat BETWEEN ${boundingBox.minLat * 1000} AND ${boundingBox.maxLat * 1000}'
+        'SELECT cell_min_lon, cell_min_lat FROM ${cells.fixedName} WHERE cell_min_lon BETWEEN $minLonCell AND $maxLonCell AND cell_min_lat BETWEEN $minLatCell AND $maxLatCell'
       );
 
       Set<String> existingSet = {};
@@ -184,7 +191,7 @@ class SpatialDb {
       // Count cells that need downloading
       int cellsToDownload = 0;
       for (BoundingBox cell in cellsInArea) {
-        final cellKey = '${(cell.minLon * 1000).toInt()},${(cell.minLat * 1000).toInt()}';
+        final cellKey = '${(cell.minLon / gridSize).floor() * 1000},${(cell.minLat / gridSize).floor() * 1000}';
         if (!existingSet.contains(cellKey)) {
           cellsToDownload++;
         }
@@ -197,12 +204,15 @@ class SpatialDb {
 
       // Process each cell in the grid
       for (BoundingBox cell in cellsInArea) {
-        final cellKey = '${(cell.minLon * 1000).toInt()},${(cell.minLat * 1000).toInt()}';
+        final cellKey = '${(cell.minLon / gridSize).floor() * 1000},${(cell.minLat / gridSize).floor() * 1000}';
 
         if (!existingSet.contains(cellKey)) {
           debugPrint('Downloading new cell $cellKey: ${cell.minLon},${cell.minLat} to ${cell.maxLon},${cell.maxLat}');
-          await addCellToDb((cell.minLon * 1000).toInt(), (cell.minLat * 1000).toInt());
-          await downloadPointsFromServer(cell);
+          await addCellToDb((cell.minLon / gridSize).floor(), (cell.minLat / gridSize).floor());
+          List<Point> points = await downloadPointsFromServer(cell);
+          if (points.isEmpty) {
+            points = await downloadPointsFromOSM(cell);
+          }
         }
         
         processedCells.add(cell);
@@ -274,7 +284,8 @@ class SpatialDb {
     );
   }
 
-  Future<void> downloadPointsFromServer(BoundingBox boundingBox) async {
+  Future<List<Point>> downloadPointsFromServer(BoundingBox boundingBox) async {
+    List<Point> downloadedPoints = [];
     try {
       // Using http instead of https since port 5000 might not be configured for SSL
       final uri = Uri.http('snf-78417.ok-kno.grnetcloud.net:5000', '/api/points', {
@@ -296,16 +307,17 @@ class SpatialDb {
       }
       
       final document = jsonDecode(response.body);
-      final points = document['points'].map((node) {
+      final jsonPoints = document['points'].map((node) {
         return {'lon': node['longitude'] as double, 'lat': node['latitude'] as double};
       }).toList();
-      debugPrint('Got ${points.length} points');
+      debugPrint('Got ${jsonPoints.length} points');
 
-      if (points.isEmpty) return;
+      if (jsonPoints.isEmpty) return [];
 
       jts.GeometryFactory gf = jts.GeometryFactory.defaultPrecision();
-      final values = points.map((p) => "(?)").join(",");
-      final arguments = points.map((p) {
+      final values = jsonPoints.map((p) => "(?)").join(",");
+      final arguments = jsonPoints.map((p) {
+        downloadedPoints.add(Point(p['lon']!, p['lat']!));
         jts.Point point = gf.createPoint(jts.Coordinate(p['lon']!, p['lat']!));
         return GeoPkgGeomWriter().write(point);
       }).toList();
@@ -316,13 +328,16 @@ class SpatialDb {
           arguments: arguments
         );
       }
+
+      return downloadedPoints;
     } catch (e) {
       debugPrint('Error downloading points: $e');
-      rethrow;
+      return [];
     }
   }
 
-  Future<void> downloadPointsFromOSM(BoundingBox boundingBox) async {
+  Future<List<Point>> downloadPointsFromOSM(BoundingBox boundingBox) async {
+    List<Point> downloadedPoints = [];
     final uri = Uri.https('overpass-api.de', '/api/interpreter', {
       'data': '[out:json];'
       'node(${boundingBox.minLat.toStringAsFixed(6)},'
@@ -334,21 +349,22 @@ class SpatialDb {
     debugPrint('Downloading points from OSM: $uri');
     try {
       final response = await http.get(uri).timeout(
-        const Duration(seconds: 5),
+        const Duration(seconds: 10),
         onTimeout: () {
           throw TimeoutException('Request timed out');
         },
       );
 
       if (response.statusCode == 200) {
-        final points = await compute(parsePointsFromJSON, response.body);
-        debugPrint('Got ${points.length} points');
+        final jsonPoints = await compute(parsePointsFromJSON, response.body);
+        debugPrint('Got ${jsonPoints.length} points');
 
-        if (points.isEmpty) return;
+        if (jsonPoints.isEmpty) return [];
 
         jts.GeometryFactory gf = jts.GeometryFactory.defaultPrecision();
-        final values = points.map((p) => "(?)").join(",");
-        final arguments = points.map((p) {
+        final values = jsonPoints.map((p) => "(?)").join(",");
+        final arguments = jsonPoints.map((p) {
+          downloadedPoints.add(Point(p['lon']!, p['lat']!));
           jts.Point point = gf.createPoint(jts.Coordinate(p['lon']!, p['lat']!));
           return GeoPkgGeomWriter().write(point);
         }).toList();
@@ -365,6 +381,7 @@ class SpatialDb {
     } catch (e) {
       debugPrint('Error downloading points: $e');
     }
+    return downloadedPoints;
   }
 
   Future<List<Point>> getClusters(BoundingBox boundingBox) async {
