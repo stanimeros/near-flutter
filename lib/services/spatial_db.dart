@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -265,28 +266,50 @@ class SpatialDb {
   }
 
   Future<void> downloadPointsFromServer(BoundingBox boundingBox) async {
-    String api = 'http://snf-78417.ok-kno.grnetcloud.net:5000/api/points?minLon=${boundingBox.minLon}&minLat=${boundingBox.minLat}&maxLon=${boundingBox.maxLon}&maxLat=${boundingBox.maxLat}';
-    final response = await http.get(Uri.parse(api));
-    final document = jsonDecode(response.body);
-    final points = document['points'].map((node) {
-      return {'lon': node['longitude'] as double, 'lat': node['latitude'] as double};
-    }).toList();
-    debugPrint('Got ${points.length} points');
-
-    if (points.isEmpty) return;
-
-    jts.GeometryFactory gf = jts.GeometryFactory.defaultPrecision();
-    final values = points.map((p) => "(?)").join(",");
-    final arguments = points.map((p) {
-      jts.Point point = gf.createPoint(jts.Coordinate(p['lon']!, p['lat']!));
-      return GeoPkgGeomWriter().write(point);
-    }).toList();
-    
-    if (arguments.isNotEmpty) {
-      db.execute(
-        "INSERT OR IGNORE INTO ${pois.fixedName} (geopoint) VALUES $values",
-        arguments: arguments
+    try {
+      // Using http instead of https since port 5000 might not be configured for SSL
+      final uri = Uri.http('snf-78417.ok-kno.grnetcloud.net:5000', '/api/points', {
+        'minLon': boundingBox.minLon.toString(),
+        'minLat': boundingBox.minLat.toString(),
+        'maxLon': boundingBox.maxLon.toString(),
+        'maxLat': boundingBox.maxLat.toString(),
+      });
+      debugPrint('Downloading points from server: $uri');
+      final response = await http.get(uri).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw TimeoutException('Request timed out');
+        },
       );
+      
+      if (response.statusCode != 200) {
+        throw HttpException('Failed with status: ${response.statusCode}');
+      }
+      
+      final document = jsonDecode(response.body);
+      final points = document['points'].map((node) {
+        return {'lon': node['longitude'] as double, 'lat': node['latitude'] as double};
+      }).toList();
+      debugPrint('Got ${points.length} points');
+
+      if (points.isEmpty) return;
+
+      jts.GeometryFactory gf = jts.GeometryFactory.defaultPrecision();
+      final values = points.map((p) => "(?)").join(",");
+      final arguments = points.map((p) {
+        jts.Point point = gf.createPoint(jts.Coordinate(p['lon']!, p['lat']!));
+        return GeoPkgGeomWriter().write(point);
+      }).toList();
+      
+      if (arguments.isNotEmpty) {
+        db.execute(
+          "INSERT OR IGNORE INTO ${pois.fixedName} (geopoint) VALUES $values",
+          arguments: arguments
+        );
+      }
+    } catch (e) {
+      debugPrint('Error downloading points: $e');
+      rethrow;
     }
   }
 
@@ -331,26 +354,32 @@ class SpatialDb {
 
   Future<List<Point>> getClusters(BoundingBox boundingBox) async {
     try {
-      final response = await http.get(
-        Uri.parse('http://snf-78417.ok-kno.grnetcloud.net:5000/api/clusters'
-          '?minLon=${boundingBox.minLon}'
-          '&minLat=${boundingBox.minLat}'
-          '&maxLon=${boundingBox.maxLon}'
-          '&maxLat=${boundingBox.maxLat}'
-          '&clusters=20'),
-      ).timeout(const Duration(seconds: 5));
+      final uri = Uri.http('snf-78417.ok-kno.grnetcloud.net:5000', '/api/clusters', {
+        'minLon': boundingBox.minLon.toString(),
+        'minLat': boundingBox.minLat.toString(),
+        'maxLon': boundingBox.maxLon.toString(),
+        'maxLat': boundingBox.maxLat.toString(),
+        'clusters': '20',
+      });
+      debugPrint('Downloading clusters from server: $uri');
+      final response = await http.get(uri).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw TimeoutException('Request timed out');
+        },
+      );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['clusters'].map<Point>((cluster) {
-          return Point(
-            cluster['longitude'],
-            cluster['latitude'],
-          );
-        }).toList();
-      } else {
-        throw Exception('Failed to fetch clusters: ${response.statusCode}');
+      if (response.statusCode != 200) {
+        throw HttpException('Failed with status: ${response.statusCode}');
       }
+      
+      final data = jsonDecode(response.body);
+      return data['clusters'].map<Point>((cluster) {
+        return Point(
+          cluster['longitude'],
+          cluster['latitude'],
+        );
+      }).toList();
     } catch (e) {
       debugPrint('Error getting clusters: $e');
       return [];
