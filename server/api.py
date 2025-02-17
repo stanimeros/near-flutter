@@ -19,6 +19,7 @@ def get_points_in_bbox():
         # Connect to database
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
+        # cur.execute("SET enable_seqscan = off")
         
         # Query points within bbox
         cur.execute("""
@@ -26,9 +27,8 @@ def get_points_in_bbox():
                    ST_X(geom) as longitude,
                    ST_Y(geom) as latitude
             FROM osm_points
-            WHERE ST_X(geom) BETWEEN %s AND %s
-            AND ST_Y(geom) BETWEEN %s AND %s
-        """, (min_lon, max_lon, min_lat, max_lat))
+            WHERE geom && ST_MakeEnvelope(%s, %s, %s, %s, 4326)
+        """, (min_lon, min_lat, max_lon, max_lat))
         
         points = cur.fetchall()
         
@@ -63,42 +63,48 @@ def get_clusters():
             WITH points AS (
                 SELECT id, geom
                 FROM osm_points
-                WHERE ST_X(geom) BETWEEN %s AND %s
-                AND ST_Y(geom) BETWEEN %s AND %s
+                WHERE geom && ST_MakeEnvelope(%s, %s, %s, %s, 4326)
             ),
-            clusters AS (
+            point_count AS (
+                SELECT COUNT(*) as total FROM points
+            ),
+            result AS (
+                SELECT 
+                    CASE 
+                        WHEN (SELECT total FROM point_count) <= %s THEN id::text
+                        ELSE ST_ClusterKMeans(geom, %s) OVER ()::text
+                    END as cluster_id,
+                    geom
+                FROM points
+            ),
+            final AS (
                 SELECT 
                     cluster_id,
                     ST_Centroid(ST_Collect(geom)) as center,
                     COUNT(*) as point_count
-                FROM (
-                    SELECT 
-                        id,
-                        geom,
-                        ST_ClusterKMeans(geom, %s) 
-                        OVER () as cluster_id
-                    FROM points
-                ) clusters
+                FROM result
                 GROUP BY cluster_id
             )
             SELECT 
                 cluster_id,
                 ST_X(center) as longitude,
                 ST_Y(center) as latitude,
-                point_count
-            FROM clusters
+                point_count,
+                (SELECT total <= %s FROM point_count) as is_individual_points
+            FROM final
             ORDER BY point_count DESC
-        """, (min_lon, max_lon, min_lat, max_lat, num_clusters))
+        """, (min_lon, min_lat, max_lon, max_lat, num_clusters, num_clusters, num_clusters))
         
-        clusters = cur.fetchall()
+        results = cur.fetchall()
         
         # Close database connection
         cur.close()
         conn.close()
         
         return jsonify({
-            'count': len(clusters),
-            'clusters': clusters
+            'count': len(results),
+            'clusters': results,
+            'is_clustered': not (results[0]['is_individual_points'] if results else False)
         })
         
     except Exception as e:

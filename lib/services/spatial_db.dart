@@ -35,6 +35,7 @@ class BoundingBox {
 
 class SpatialDb {
   static late GeopackageDb db;
+  static const int clusters = 20;
   static const double gridSize = 0.005;
   static const double metersPerDegree = 111000.0;
   static String dbFilename = 'points.gpkg';
@@ -147,10 +148,28 @@ class SpatialDb {
       }
       
       debugPrint('Grid area: ($minLon,$minLat) to ($maxLon,$maxLat)');
+
+      for (int lon = minLon; lon <= maxLon; lon++) {
+        for (int lat = minLat; lat <= maxLat; lat++) {
+          cellsInArea.add(BoundingBox(lon * gridSize, (lon + 1) * gridSize, lat * gridSize, (lat + 1) * gridSize));
+        }
+      }
       
-      // Get existing cells
+      return cellsInArea;
+    } catch(e) {
+      debugPrint('Error in getCellsInArea: $e');
+    }
+    return [];
+  }
+
+  Future<List<BoundingBox>> downloadCellsInArea(BoundingBox boundingBox) async {
+    List<BoundingBox> cellsInArea = [];
+    try {
+      cellsInArea = await getCellsInArea(boundingBox);
+      
+      // Get existing cells - adjust the query to use multiplied coordinates
       final existingCells = db.select(
-        'SELECT cell_min_lon, cell_min_lat FROM ${cells.fixedName} WHERE cell_min_lon BETWEEN $minLon AND $maxLon AND cell_min_lat BETWEEN $minLat AND $maxLat'
+        'SELECT cell_min_lon, cell_min_lat FROM ${cells.fixedName} WHERE cell_min_lon BETWEEN ${boundingBox.minLon * 1000} AND ${boundingBox.maxLon * 1000} AND cell_min_lat BETWEEN ${boundingBox.minLat * 1000} AND ${boundingBox.maxLat * 1000}'
       );
 
       Set<String> existingSet = {};
@@ -160,14 +179,14 @@ class SpatialDb {
 
       debugPrint('Found ${existingSet.length} existing cells');
 
+      List<BoundingBox> processedCells = [];
+
       // Count cells that need downloading
       int cellsToDownload = 0;
-      for (int lon = minLon; lon <= maxLon; lon++) {
-        for (int lat = minLat; lat <= maxLat; lat++) {
-          final cellKey = '$lon,$lat';
-          if (!existingSet.contains(cellKey)) {
-            cellsToDownload++;
-          }
+      for (BoundingBox cell in cellsInArea) {
+        final cellKey = '${(cell.minLon * 1000).toInt()},${(cell.minLat * 1000).toInt()}';
+        if (!existingSet.contains(cellKey)) {
+          cellsToDownload++;
         }
       }
 
@@ -177,31 +196,21 @@ class SpatialDb {
       }
 
       // Process each cell in the grid
-      for (int lon = minLon; lon <= maxLon; lon++) {
-        for (int lat = minLat; lat <= maxLat; lat++) {
-          final cellKey = '$lon,$lat';
-          
-          // Calculate actual cell bounds
-          final cellBounds = BoundingBox(
-            lon * gridSize,           // minLon
-            (lon + 1) * gridSize,    // maxLon
-            lat * gridSize,          // minLat
-            (lat + 1) * gridSize,    // maxLat
-          );
+      for (BoundingBox cell in cellsInArea) {
+        final cellKey = '${(cell.minLon * 1000).toInt()},${(cell.minLat * 1000).toInt()}';
 
-          if (!existingSet.contains(cellKey)) {
-            debugPrint('Downloading new cell $cellKey: ${cellBounds.minLon},${cellBounds.minLat} to ${cellBounds.maxLon},${cellBounds.maxLat}');
-            await addCellToDb(lon, lat);
-            await downloadPointsFromServer(cellBounds);
-          }
-          
-          cellsInArea.add(cellBounds);
+        if (!existingSet.contains(cellKey)) {
+          debugPrint('Downloading new cell $cellKey: ${cell.minLon},${cell.minLat} to ${cell.maxLon},${cell.maxLat}');
+          await addCellToDb((cell.minLon * 1000).toInt(), (cell.minLat * 1000).toInt());
+          await downloadPointsFromServer(cell);
         }
+        
+        processedCells.add(cell);
       }
 
-      return cellsInArea;
+      return processedCells;
     } catch(e) {
-      debugPrint('Error in getCellsInArea: $e');
+      debugPrint('Error in downloadCellsInArea: $e');
     }
     return [];
   }
@@ -231,7 +240,7 @@ class SpatialDb {
       debugPrint('Creating bbox with side ${bufferMeters*2}m');
       BoundingBox boundingBox = await createBufferBoundingBox(lon, lat, bufferMeters);
       // Get cells in the updated bounding box area
-      await getCellsInArea(boundingBox);
+      await downloadCellsInArea(boundingBox);
       List<Point> points = await getPointsInBoundingBox(boundingBox);
 
       if (points.length < k) {
@@ -269,10 +278,10 @@ class SpatialDb {
     try {
       // Using http instead of https since port 5000 might not be configured for SSL
       final uri = Uri.http('snf-78417.ok-kno.grnetcloud.net:5000', '/api/points', {
-        'minLon': boundingBox.minLon.toString(),
-        'minLat': boundingBox.minLat.toString(),
-        'maxLon': boundingBox.maxLon.toString(),
-        'maxLat': boundingBox.maxLat.toString(),
+        'minLon': boundingBox.minLon.toStringAsFixed(6),
+        'minLat': boundingBox.minLat.toStringAsFixed(6),
+        'maxLon': boundingBox.maxLon.toStringAsFixed(6),
+        'maxLat': boundingBox.maxLat.toStringAsFixed(6),
       });
       debugPrint('Downloading points from server: $uri');
       final response = await http.get(uri).timeout(
@@ -314,16 +323,22 @@ class SpatialDb {
   }
 
   Future<void> downloadPointsFromOSM(BoundingBox boundingBox) async {
-    // Format coordinates with 6 decimal places for precision
-    String api = 'https://overpass-api.de/api/interpreter?data=[out:json];'
-      'node(${boundingBox.minLat.toStringAsFixed(6)},${boundingBox.minLon.toStringAsFixed(6)},'
-      '${boundingBox.maxLat.toStringAsFixed(6)},${boundingBox.maxLon.toStringAsFixed(6)});'
-      'out;';
-    
+    final uri = Uri.https('overpass-api.de', '/api/interpreter', {
+      'data': '[out:json];'
+      'node(${boundingBox.minLat.toStringAsFixed(6)},'
+      '${boundingBox.minLon.toStringAsFixed(6)},'
+      '${boundingBox.maxLat.toStringAsFixed(6)},'
+      '${boundingBox.maxLon.toStringAsFixed(6)});'
+      'out;'
+    });
+    debugPrint('Downloading points from OSM: $uri');
     try {
-      final response = await http.get(
-        Uri.parse(api),
-      ).timeout(const Duration(seconds: 5));
+      final response = await http.get(uri).timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          throw TimeoutException('Request timed out');
+        },
+      );
 
       if (response.statusCode == 200) {
         final points = await compute(parsePointsFromJSON, response.body);
@@ -355,11 +370,11 @@ class SpatialDb {
   Future<List<Point>> getClusters(BoundingBox boundingBox) async {
     try {
       final uri = Uri.http('snf-78417.ok-kno.grnetcloud.net:5000', '/api/clusters', {
-        'minLon': boundingBox.minLon.toString(),
-        'minLat': boundingBox.minLat.toString(),
-        'maxLon': boundingBox.maxLon.toString(),
-        'maxLat': boundingBox.maxLat.toString(),
-        'clusters': '20',
+        'minLon': boundingBox.minLon.toStringAsFixed(6),
+        'minLat': boundingBox.minLat.toStringAsFixed(6),
+        'maxLon': boundingBox.maxLon.toStringAsFixed(6),
+        'maxLat': boundingBox.maxLat.toStringAsFixed(6),
+        'clusters': clusters.toString(),
       });
       debugPrint('Downloading clusters from server: $uri');
       final response = await http.get(uri).timeout(

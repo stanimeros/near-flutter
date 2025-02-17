@@ -221,9 +221,9 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     
   Future<void> _loadPOIsForCell(String cellKey, BoundingBox cell) async {
     try {
-      final unfilteredPoints = await SpatialDb().getPointsInBoundingBox(cell);
-      final points = unfilteredPoints.take(20).toList();
-      // final points = await SpatialDb().getClusters(cell);
+      // final unfilteredPoints = await SpatialDb().getPointsInBoundingBox(cell);
+      // final points = unfilteredPoints.take(20).toList();
+      final points = await SpatialDb().getClusters(cell);
 
       final cellMarkers = <Marker>{};
       for (var point in points) {
