@@ -232,7 +232,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     }
   }
     
-  Future<void> _loadPOIsForCell(String cellKey, BoundingBox cell) async {
+  Future<void> loadPOIsForCell(String cellKey, BoundingBox cell) async {
     try {
       final points = await SpatialDb().getClusters(cell);
       final cellMarkers = <Marker>{};
