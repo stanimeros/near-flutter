@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_near/services/firestore.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
@@ -29,13 +30,10 @@ class MapPage extends StatefulWidget {
 class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   GoogleMapController? _mapController;
   Set<Marker> _markers = {};
-  bool isLoadingLocation = true;  // For initial location loading
-  bool isLoadingPOIs = false;     // For POIs loading
   bool isMapCreated = false;
   LatLng? initialPosition;
   bool _isCameraMoving = false;
   final Map<String, Set<Marker>> _cellMarkers = {}; // Track markers per cell
-  final Set<Polygon> _cellPolygons = {};  // Add this for cell visualization
   Meeting? _suggestedMeeting;  // Track current suggestion
   bool _shouldShowPOIs = true;  // Add this to control POI visibility
   double _lastZoomLevel = 0;  // Add this as a class field
@@ -107,7 +105,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
             widget.suggestedMeeting!.location.latitude,
             widget.suggestedMeeting!.location.longitude
           );
-          isLoadingLocation = false;
         });
       } else {
         // Otherwise get current location
@@ -116,7 +113,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         if (pos != null) {
           setState(() {
             initialPosition = LatLng(pos.latitude, pos.longitude);
-            isLoadingLocation = false;
           });
         } else {
           throw Exception('Could not get location');
@@ -130,9 +126,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         );
       }
     } catch (e) {
-      setState(() {
-        isLoadingLocation = false;
-      });
+      debugPrint('Error in _initializeMap: $e');
     }
   }
 
@@ -152,10 +146,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     _isCameraMoving = true;
     // Check if zoom level has changed
     if (position.zoom != _lastZoomLevel) {
-      // Clear both cluster markers and cell polygons, keeping suggested and previous locations
       setState(() {
         _cellMarkers.clear();  // Clear cluster markers
-        _cellPolygons.removeWhere((p) => p.polygonId != const PolygonId('viewport')); // Clear cell polygons but keep viewport
       });
       _lastZoomLevel = position.zoom;
     }
@@ -171,122 +163,21 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   Future<void> _loadPOIsInViewport() async {
     if (_mapController == null || !_shouldShowPOIs) return;
 
-    final LatLngBounds visibleBounds = await _mapController!.getVisibleRegion();
-    final visibleBoundingBox = BoundingBox(
-      visibleBounds.southwest.longitude,
-      visibleBounds.northeast.longitude,
-      visibleBounds.southwest.latitude,
-      visibleBounds.northeast.latitude
-    );
-
     // Only show polygons and load cells if we're showing POIs
     if (_shouldShowPOIs) {
-
-      _loadPOIsBetweenTwoPoints(widget.currentUser!.getPoint(), widget.friend!.getPoint());
-      // Add blue polygon for viewport
-      final viewportPolygon = Polygon(
-        polygonId: const PolygonId('viewport'),
-        points: [
-          visibleBounds.southwest,
-          LatLng(visibleBounds.southwest.latitude, visibleBounds.northeast.longitude),
-          visibleBounds.northeast,
-          LatLng(visibleBounds.northeast.latitude, visibleBounds.southwest.longitude),
-        ],
-        strokeColor: Colors.blue,
-        strokeWidth: 2,
-        fillColor: Colors.blue.withAlpha(50),
-      );
-
-      // Calculate all cells that intersect with viewport
-      final gridSize = (visibleBoundingBox.maxLon - visibleBoundingBox.minLon) * 2;
-      final cellsInArea = await SpatialDb().getCellsInArea(visibleBoundingBox, gridSize);
-
-      setState(() {
-        // Update viewport polygon
-        _cellPolygons.removeWhere((p) => p.polygonId == const PolygonId('viewport'));
-        _cellPolygons.add(viewportPolygon);
-
-        // Add red polygons for all cells in viewport
-        for (var cell in cellsInArea) {
-          final cellKey = '${cell.minLon},${cell.minLat}';
-          final cellPolygon = Polygon(
-            polygonId: PolygonId('cell_$cellKey'),
-            points: [
-              LatLng(cell.minLat, cell.minLon),
-              LatLng(cell.minLat, cell.maxLon),
-              LatLng(cell.maxLat, cell.maxLon),
-              LatLng(cell.maxLat, cell.minLon),
-            ],
-            strokeColor: Colors.red,
-            strokeWidth: 2,
-            fillColor: Colors.red.withAlpha(50),
-          );
-          _cellPolygons.add(cellPolygon);
-
-          // Only load POIs if cell is not already loaded
-          if (!_cellMarkers.containsKey(cellKey)) {
-            // _loadPOIsForCell(cellKey, cell);
-          }
-        }
-      });
-    }
-  }
-    
-  Future<void> loadPOIsForCell(String cellKey, BoundingBox cell) async {
-    try {
-      final points = await SpatialDb().getClusters(cell);
+      final zoomLevel = await _mapController!.getZoomLevel();
+      final zoom = max(1, zoomLevel.toInt() - 12);
+      final points = await SpatialDb().getClustersBetweenTwoPoints(widget.currentUser!.getPoint(), widget.friend!.getPoint(), zoom);
       final cellMarkers = <Marker>{};
 
       for (var point in points) {
-        bool isCurrentSuggestion = _suggestedMeeting != null && 
-          point.lat == _suggestedMeeting!.location.latitude &&
-          point.lon == _suggestedMeeting!.location.longitude;
-        
-        if (_shouldShowPOIs || isCurrentSuggestion) {
-          cellMarkers.add(_createPOIMarker(point, isCurrentSuggestion: isCurrentSuggestion));
-        }
+        cellMarkers.add(_createPOIMarker(point));
       }
 
       setState(() {
-        _cellMarkers[cellKey] = cellMarkers;
-        
-        // Combine all markers, ensuring the meeting marker stays visible
-        Set<Marker> allMarkers = _cellMarkers.values.expand((markers) => markers).toSet();
-        
-        // Add suggested meeting and previous locations
-        if (_suggestedMeeting != null) {
-          // Add current suggestion
-          Point meetingPoint = Point(
-            _suggestedMeeting!.location.longitude,
-            _suggestedMeeting!.location.latitude
-          );
-          allMarkers.add(_createPOIMarker(meetingPoint, isCurrentSuggestion: true));
-          
-          // Add previous locations
-          for (var prevLocation in _suggestedMeeting!.previousLocations) {
-            Point prevPoint = Point(prevLocation.longitude, prevLocation.latitude);
-            allMarkers.add(_createPOIMarker(prevPoint, isPreviousPoint: true));
-          }
-        }
-        
-        _markers = allMarkers;
+        _markers = cellMarkers;
       });
-    } catch (e) {
-      debugPrint('Error loading POIs for cell $cellKey: $e');
     }
-  }
-
-  Future<void> _loadPOIsBetweenTwoPoints(Point point1, Point point2) async {
-    final points = await SpatialDb().getClustersBetweenTwoPoints(point1, point2);
-    final cellMarkers = <Marker>{};
-
-    for (var point in points) {
-      cellMarkers.add(_createPOIMarker(point));
-    }
-
-    setState(() {
-      _markers = cellMarkers;
-    });
   }
 
   Marker _createPOIMarker(Point point, {
@@ -582,7 +473,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    if (isLoadingLocation || initialPosition == null) {
+    if (initialPosition == null) {
       return const Scaffold(
         body: Center(
           child: Column(
@@ -603,43 +494,24 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       ),
       body: Stack(
         children: [
-          if (!isLoadingLocation && initialPosition != null)
-            Column(
-              children: [
-                Expanded(
-                  child: GoogleMap(
-                    onMapCreated: _onMapCreated,
-                    initialCameraPosition: CameraPosition(
-                      target: initialPosition!,
-                      zoom: 17,
-                    ),
-                    myLocationEnabled: true,
-                    myLocationButtonEnabled: true,
-                    markers: _markers,
-                    polygons: _shouldShowPOIs ? _cellPolygons : {}, // Only show polygons if showing POIs
-                    onCameraMove: _onCameraMove,
-                    onCameraIdle: _onCameraIdle,
+          if (initialPosition != null) Column(
+            children: [
+              Expanded(
+                child: GoogleMap(
+                  onMapCreated: _onMapCreated,
+                  initialCameraPosition: CameraPosition(
+                    target: initialPosition!,
+                    zoom: 17,
                   ),
-                ),
-              ],
-            ),
-          if (isLoadingPOIs && _shouldShowPOIs) // Only show loading if showing POIs
-            Container(
-              color: Colors.black.withAlpha(50),
-              child: const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CustomLoader(),
-                    SizedBox(height: 16),
-                    Text(
-                      'Loading POIs...',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  ],
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: true,
+                  markers: _markers,
+                  onCameraMove: _onCameraMove,
+                  onCameraIdle: _onCameraIdle,
                 ),
               ),
-            ),
+            ],
+          ),
         ],
       ),
     );

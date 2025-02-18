@@ -16,6 +16,17 @@ class Point {
   Point(this.lon, this.lat);
 }
 
+class GridCell {
+  int lon;
+  int lat;
+
+  GridCell(this.lon, this.lat);
+
+  getKey() {
+    return '$lon,$lat';
+  }
+}
+
 class BoundingBox {
   double minLon;
   double maxLon;
@@ -100,7 +111,7 @@ class SpatialDb {
         db.createSpatialTable(
           cells,
           4326,
-          "cell_min_lon INTEGER, cell_min_lat INTEGER",
+          "cell_lon INTEGER, cell_lat INTEGER",
           ["id INTEGER PRIMARY KEY AUTOINCREMENT"],
           null,
           false,
@@ -125,15 +136,13 @@ class SpatialDb {
     }
   }
 
-  Future<void> addCellToDb(BoundingBox boundingBox, double gridSize) async {
-    String cellKey = getCellKey(boundingBox, gridSize);
-    debugPrint('Adding cell to db: $cellKey');
-    String sql = "INSERT OR IGNORE INTO ${cells.fixedName} (cell_min_lon, cell_min_lat) VALUES (?, ?);";
-    db.execute(sql, arguments: [boundingBox.minLon / gridSize, boundingBox.minLat / gridSize]);
+  Future<void> addCellToDb(GridCell cell) async {
+    String sql = "INSERT OR IGNORE INTO ${cells.fixedName} (cell_lon, cell_lat) VALUES (?, ?);";
+    db.execute(sql, arguments: [cell.lon, cell.lat]);
   }
 
-  Future<List<BoundingBox>> getCellsInArea(BoundingBox boundingBox, double gridSize) async {
-    List<BoundingBox> cellsInArea = [];
+  Future<List<GridCell>> getCellsInArea(BoundingBox boundingBox, double gridSize) async {
+    List<GridCell> cellsInArea = [];
     try {
       // Calculate cell indices
       int minLon = (boundingBox.minLon / gridSize).floor();
@@ -148,11 +157,11 @@ class SpatialDb {
         return [];
       }
       
-      debugPrint('Grid area: ($minLon,$minLat) to ($maxLon,$maxLat)');
+      debugPrint('Grid area ($totalCells): ($minLon,$minLat) to ($maxLon,$maxLat)');
 
       for (int lon = minLon; lon <= maxLon; lon++) {
         for (int lat = minLat; lat <= maxLat; lat++) {
-          cellsInArea.add(BoundingBox(lon * gridSize, (lon + 1) * gridSize, lat * gridSize, (lat + 1) * gridSize));
+          cellsInArea.add(GridCell(lon, lat));
         }
       }
       
@@ -165,9 +174,9 @@ class SpatialDb {
 
   Future<List<BoundingBox>> downloadCellsInArea(BoundingBox boundingBox) async {
     double gridSize = 0.005;
-    List<BoundingBox> cellsInArea = [];
+    List<BoundingBox> downloadedCells = [];
     try {
-      cellsInArea = await getCellsInArea(boundingBox, gridSize);
+      List<GridCell> gridCells = await getCellsInArea(boundingBox, gridSize);
       
       // Calculate cell indices for the query
       int minLonCell = (boundingBox.minLon / gridSize).floor();
@@ -177,22 +186,20 @@ class SpatialDb {
       
       // Get existing cells using the cell indices
       final existingCells = db.select(
-        'SELECT cell_min_lon, cell_min_lat FROM ${cells.fixedName} WHERE cell_min_lon BETWEEN $minLonCell AND $maxLonCell AND cell_min_lat BETWEEN $minLatCell AND $maxLatCell'
+        'SELECT cell_lon, cell_lat FROM ${cells.fixedName} WHERE cell_lon BETWEEN $minLonCell AND $maxLonCell AND cell_lat BETWEEN $minLatCell AND $maxLatCell'
       );
 
       Set<String> existingSet = {};
       existingCells.forEach(
-        (row) => existingSet.add('${row.get("cell_min_lon")},${row.get("cell_min_lat")}')
+        (row) => existingSet.add('${row.get("cell_lon")},${row.get("cell_lat")}')
       );
 
       debugPrint('Found ${existingSet.length} existing cells');
 
-      List<BoundingBox> processedCells = [];
-
       // Count cells that need downloading
       int cellsToDownload = 0;
-      for (BoundingBox cell in cellsInArea) {
-        final cellKey = getCellKey(cell, gridSize);
+      for (GridCell cell in gridCells) {
+        final cellKey = cell.getKey();
         if (!existingSet.contains(cellKey)) {
           cellsToDownload++;
         }
@@ -204,30 +211,27 @@ class SpatialDb {
       }
 
       // Process each cell in the grid
-      for (BoundingBox cell in cellsInArea) {
-        final cellKey = getCellKey(cell, gridSize);
+      for (GridCell cell in gridCells) {
+        final cellKey = cell.getKey();
 
         if (!existingSet.contains(cellKey)) {
-          debugPrint('Downloading new cell $cellKey: ${cell.minLon},${cell.minLat} to ${cell.maxLon},${cell.maxLat}');
-          await addCellToDb(cell, gridSize);
-          List<Point> points = await downloadPointsFromServer(cell);
+          debugPrint('Downloading new cell $cellKey: ${cell.lon},${cell.lat}');
+          await addCellToDb(cell);
+          BoundingBox boundingBox = BoundingBox(cell.lon * gridSize, (cell.lon + 1) * gridSize, cell.lat * gridSize, (cell.lat + 1) * gridSize);
+          List<Point> points = await downloadPointsFromServer(boundingBox);
           if (points.isEmpty) {
-            points = await downloadPointsFromOSM(cell);
+            points = await downloadPointsFromOSM(boundingBox);
           }
         }
         
-        processedCells.add(cell);
+        downloadedCells.add(boundingBox);
       }
 
-      return processedCells;
+      return downloadedCells;
     } catch(e) {
       debugPrint('Error in downloadCellsInArea: $e');
     }
     return [];
-  }
-
-  String getCellKey(BoundingBox boundingBox, double gridSize) {
-    return '${(boundingBox.minLon / gridSize).floor()},${(boundingBox.minLat / gridSize).floor()}';
   }
 
   // Function to get points within a bounding box
@@ -423,13 +427,14 @@ class SpatialDb {
     }
   }
 
-  Future<List<Point>> getClustersBetweenTwoPoints(Point point1, Point point2) async {
+  Future<List<Point>> getClustersBetweenTwoPoints(Point point1, Point point2, int clusters) async {
     try {
       final uri = Uri.http('snf-78417.ok-kno.grnetcloud.net:5000', '/api/two-point-clusters', {
         'lon1': point1.lon.toStringAsFixed(6),
         'lat1': point1.lat.toStringAsFixed(6),
         'lon2': point2.lon.toStringAsFixed(6),
         'lat2': point2.lat.toStringAsFixed(6),
+        'clusters': clusters.toString(),
       });
       debugPrint('Downloading clusters between two points: $uri');
       final response = await http.get(uri).timeout(
