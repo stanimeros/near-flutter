@@ -43,17 +43,9 @@ def get_points_in_bbox():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 400
-
-@app.route('/api/clusters', methods=['GET'])
-def get_clusters():
+    
+def perform_clustering(min_lon, min_lat, max_lon, max_lat, num_clusters=5):
     try:
-        # Get parameters from query string
-        min_lon = float(request.args.get('minLon'))
-        min_lat = float(request.args.get('minLat'))
-        max_lon = float(request.args.get('maxLon'))
-        max_lat = float(request.args.get('maxLat'))
-        num_clusters = int(request.args.get('clusters', 5))  # default to 5 clusters
-        
         # Connect to database
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -106,9 +98,45 @@ def get_clusters():
             'clusters': results,
             'is_clustered': not (results[0]['is_individual_points'] if results else False)
         })
-        
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+
+@app.route('/api/clusters', methods=['GET'])
+def get_clusters():
+    # Get parameters from query string
+    min_lon = float(request.args.get('minLon'))
+    min_lat = float(request.args.get('minLat'))
+    max_lon = float(request.args.get('maxLon'))
+    max_lat = float(request.args.get('maxLat'))
+    num_clusters = int(request.args.get('clusters', 5))  # default to 5 clusters
+    
+    return perform_clustering(min_lon, min_lat, max_lon, max_lat, num_clusters)
+    
+@app.route('/api/two-point-clusters', methods=['GET'])
+def get_clusters_between_points():
+    # Get parameters for two points
+    lon1 = float(request.args.get('lon1'))
+    lat1 = float(request.args.get('lat1'))
+    lon2 = float(request.args.get('lon2'))
+    lat2 = float(request.args.get('lat2'))
+    num_clusters = int(request.args.get('clusters', 5))
+    
+    # Create bounding box from the two points
+    min_lon = min(lon1, lon2)
+    max_lon = max(lon1, lon2)
+    min_lat = min(lat1, lat2)
+    max_lat = max(lat1, lat2)
+    
+    # Add some padding to the bounding box (e.g., 10% on each side)
+    lon_padding = (max_lon - min_lon) * 0.1
+    lat_padding = (max_lat - min_lat) * 0.1
+    
+    min_lon -= lon_padding
+    max_lon += lon_padding
+    min_lat -= lat_padding
+    max_lat += lat_padding
+    
+    return perform_clustering(min_lon, min_lat, max_lon, max_lat, num_clusters)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

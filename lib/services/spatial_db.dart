@@ -422,6 +422,39 @@ class SpatialDb {
       return [];
     }
   }
+
+  Future<List<Point>> getClustersBetweenTwoPoints(Point point1, Point point2) async {
+    try {
+      final uri = Uri.http('snf-78417.ok-kno.grnetcloud.net:5000', '/api/two-point-clusters', {
+        'lon1': point1.lon.toStringAsFixed(6),
+        'lat1': point1.lat.toStringAsFixed(6),
+        'lon2': point2.lon.toStringAsFixed(6),
+        'lat2': point2.lat.toStringAsFixed(6),
+      });
+      debugPrint('Downloading clusters between two points: $uri');
+      final response = await http.get(uri).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw TimeoutException('Request timed out');
+        },
+      );
+
+      if (response.statusCode != 200) {
+        throw HttpException('Failed with status: ${response.statusCode}');
+      }
+      
+      final data = jsonDecode(response.body);
+      return data['clusters'].map<Point>((cluster) {
+        return Point(
+          cluster['longitude'],
+          cluster['latitude'],
+        );
+      }).toList();
+    } catch (e) {
+      debugPrint('Error getting clusters: $e');
+      return [];
+    }
+  }
 }
 
 List<Map<String, double>> parsePointsFromJSON(String jsonString){

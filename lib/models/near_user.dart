@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_near/services/spatial_db.dart';
 import 'package:geolocator/geolocator.dart';
 
 class NearUser{
@@ -79,5 +80,9 @@ class NearUser{
     });
 
     return friends;
+  }
+
+  getPoint(){
+    return Point(location!.longitude, location!.latitude);
   }
 }
