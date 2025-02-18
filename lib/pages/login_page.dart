@@ -40,21 +40,27 @@ class _LoginPageState extends State<LoginPage> {
     final password = _passwordController.text;
     final username = _usernameController.text.trim();
 
-    final success = isRegistering
-        ? await AuthService().registerWithEmailPassword(
-            email,
-            password,
-            username,
-          )
-        : await AuthService().signInWithEmailPassword(
-            email,
-            password,
-          );
+    final result = isRegistering
+      ? await AuthService().registerWithEmailPassword(
+          email,
+          password,
+          username,
+        )
+      : await AuthService().signInWithEmailPassword(
+          email,
+          password,
+        );
 
-    if (!success) {
+    if (result != null && mounted) {
       setState(() {
         isLoading = false;
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 

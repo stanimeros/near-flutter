@@ -132,9 +132,6 @@ class _ProfilePageState extends State<ProfilePage> {
 
     if (confirm == true) {
       await FirebaseAuth.instance.signOut();
-      if (context.mounted) {
-        Navigator.pop(context);
-      }
     }
   }
 

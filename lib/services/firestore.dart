@@ -182,6 +182,8 @@ class FirestoreService {
       .where('username', isEqualTo: username)
       .get();
 
+      debugPrint('usersSnapshot: ${usersSnapshot.docs.length}');
+
       if (usersSnapshot.docs.isNotEmpty){
         return usersSnapshot.docs.first.id;
       }

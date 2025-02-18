@@ -5,8 +5,13 @@ import 'package:flutter_near/services/firestore.dart';
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  Future<bool> registerWithEmailPassword(String email, String password, String username) async {
+  Future<String?> registerWithEmailPassword(String email, String password, String username) async {
     try {
+      final uid = await FirestoreService().getUID(username);
+      if (uid != null) {
+        return 'Username already exists';
+      }
+
       // Create user with email and password
       final UserCredential result = await _auth.createUserWithEmailAndPassword(
         email: email,
@@ -20,25 +25,26 @@ class AuthService {
           email,
           username,
         );
-        return true;
+        return null;
       }
-      return false;
+
+      return 'Something went wrong';
     } catch (e) {
       debugPrint('Error in registerWithEmailPassword: $e');
-      return false;
+      return (e as FirebaseException).message.toString();
     }
   }
 
-  Future<bool> signInWithEmailPassword(String email, String password) async {
+  Future<String?> signInWithEmailPassword(String email, String password) async {
     try {
       await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
-      return true;
+      return null;
     } catch (e) {
       debugPrint('Error in signInWithEmailPassword: $e');
-      return false;
+      return (e as FirebaseException).message.toString();
     }
   }
 }
