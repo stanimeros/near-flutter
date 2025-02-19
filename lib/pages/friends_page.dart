@@ -25,6 +25,7 @@ class _FriendsPageState extends State<FriendsPage> {
   bool isLoading = false;
   NearUser? currentUser;
   Future<List<NearUser>>? futureList;
+  String locationPermissionStatus = 'Not asked';
 
   @override
   void initState() {
@@ -126,7 +127,33 @@ class _FriendsPageState extends State<FriendsPage> {
                 return const CustomLoader();
               },
             )
-          : const Text('Please share your location'),
+          : Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Location permission is required to view friends nearby. Please grant permission.',
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () async {
+                      final String? permissionStatus = await LocationService().askForPermissions();
+                      if (permissionStatus == null) {
+                        setState(() {
+                          locationPermissionStatus = 'Granted';
+                        });
+                      } else {
+                        setState(() {
+                          locationPermissionStatus = permissionStatus;
+                        });
+                      }
+                    },
+                    child: Text(locationPermissionStatus),
+                  ),
+                ],
+              ),
+            ),
         ),
       ],
     );

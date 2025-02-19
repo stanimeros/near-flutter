@@ -79,7 +79,7 @@ extension MeetingStatusExtension on MeetingStatus {
       case MeetingStatus.rejected:
         return 'Rejected';
       case MeetingStatus.counterProposal:
-        return 'Counter Proposal';
+        return 'Pending';
       case MeetingStatus.cancelled:
         return 'Cancelled';
     }

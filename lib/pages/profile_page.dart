@@ -112,7 +112,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final bool? confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Sign Out'),
+        title: const Text('Sign out'),
         content: const Text('Are you sure you want to sign out?'),
         actions: [
           TextButton(
@@ -124,7 +124,7 @@ class _ProfilePageState extends State<ProfilePage> {
               foregroundColor: Theme.of(context).colorScheme.error,
             ),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Sign Out'),
+            child: const Text('Sign out'),
           ),
         ],
       ),

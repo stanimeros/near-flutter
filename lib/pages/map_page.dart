@@ -29,14 +29,18 @@ class MapPage extends StatefulWidget {
 
 class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   GoogleMapController? _mapController;
-  Set<Marker> _markers = {};
-  bool isMapCreated = false;
+  
   LatLng? initialPosition;
-  bool _isCameraMoving = false;
-  final Map<String, Set<Marker>> _cellMarkers = {}; // Track markers per cell
+  bool isMapCreated = false;
+
   Meeting? _suggestedMeeting;  // Track current suggestion
+
+  Set<Marker> _markers = {};
   bool _shouldShowPOIs = true;  // Add this to control POI visibility
+  
+  bool _zoomChanged = false;
   double _lastZoomLevel = 0;  // Add this as a class field
+
 
   @override
   void initState() {
@@ -140,44 +144,54 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         CameraUpdate.newLatLng(initialPosition!)
       );
     }
+
   }
 
   void _onCameraMove(CameraPosition position) {
-    _isCameraMoving = true;
     // Check if zoom level has changed
     if (position.zoom != _lastZoomLevel) {
-      setState(() {
-        _cellMarkers.clear();  // Clear cluster markers
-      });
+      _zoomChanged = true;
       _lastZoomLevel = position.zoom;
     }
   }
 
   void _onCameraIdle() {
-    if (_isCameraMoving) {
-      _isCameraMoving = false;
+    if (_zoomChanged) {
       _loadPOIsInViewport();
+      _zoomChanged = false;
     }
   }
 
   Future<void> _loadPOIsInViewport() async {
     if (_mapController == null || !_shouldShowPOIs) return;
 
+    _markers.clear();
+
     // Only show polygons and load cells if we're showing POIs
     if (_shouldShowPOIs) {
       final zoomLevel = await _mapController!.getZoomLevel();
       final zoom = max(1, zoomLevel.toInt() - 12);
       final points = await SpatialDb().getClustersBetweenTwoPoints(widget.currentUser!.getPoint(), widget.friend!.getPoint(), zoom);
-      final cellMarkers = <Marker>{};
 
       for (var point in points) {
-        cellMarkers.add(_createPOIMarker(point));
+        _markers.add(_createPOIMarker(point));
       }
-
-      setState(() {
-        _markers = cellMarkers;
-      });
     }
+
+    // Add markers for current and previous locations
+    if (_suggestedMeeting != null) {
+      // Add marker for current location
+      Point currentPoint = Point(_suggestedMeeting!.location.longitude, _suggestedMeeting!.location.latitude);
+      _markers.add(_createPOIMarker(currentPoint, isCurrentSuggestion: true));
+
+      // Add markers for previous locations
+      for (var prevLocation in _suggestedMeeting!.previousLocations) {
+        Point prevPoint = Point(prevLocation.longitude, prevLocation.latitude);
+        _markers.add(_createPOIMarker(prevPoint, isPreviousPoint: true));
+      }
+    }
+
+    setState(() {});
   }
 
   Marker _createPOIMarker(Point point, {
@@ -236,9 +250,12 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   }
 
   void _onMarkerTapped(Point point) {
-    bool isCurrentPoint = _suggestedMeeting != null && 
-      point.lat == _suggestedMeeting!.location.latitude &&
-      point.lon == _suggestedMeeting!.location.longitude;
+    bool isCurrentPoint =
+      point.lat == _suggestedMeeting?.location.latitude &&
+      point.lon == _suggestedMeeting?.location.longitude;
+
+    bool isInPreviousLocations = _suggestedMeeting?.previousLocations.any((loc) => 
+      loc.latitude == point.lat && loc.longitude == point.lon) ?? false;
 
     bool isLastProposer = widget.currentUser!.uid == _suggestedMeeting?.senderId;
 
@@ -249,7 +266,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     }
 
     // If this is not the current meeting point
-    if (!isCurrentPoint) {
+    if (!isCurrentPoint && !isInPreviousLocations) {
       // Allow counter-proposal only for the person who didn't make the last proposal
       if (!isLastProposer && 
           (_suggestedMeeting!.status == MeetingStatus.pending || 
@@ -263,32 +280,37 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       return;
     }
 
-    // For the current meeting point
-    if (_suggestedMeeting!.status == MeetingStatus.pending || 
-        _suggestedMeeting!.status == MeetingStatus.counterProposal) {
-      if (widget.currentUser!.uid == _suggestedMeeting!.senderId) {
-        // The person who made the last proposal can cancel
-        _showMeetingSheet(
-          point, 
-          isNewSuggestion: false,
-          allowCancel: true
-        );
+    if (isCurrentPoint) {
+      // For the current meeting point
+      if (_suggestedMeeting!.status == MeetingStatus.pending || 
+          _suggestedMeeting!.status == MeetingStatus.counterProposal) {
+        if (widget.currentUser!.uid == _suggestedMeeting!.senderId) {
+          // The person who made the last proposal can cancel
+          _showMeetingSheet(
+            point, 
+            isNewSuggestion: false,
+            allowCancel: true
+          );
+          return;
+        } else {
+          // The person who didn't make the last proposal can accept or reject
+          _showMeetingSheet(
+            point, 
+            isNewSuggestion: false,
+            allowReject: true,
+            allowAccept: true
+          );
+          return;
+        }
       } else {
-        // The person who didn't make the last proposal can accept or reject
+        // For other statuses, just show info
         _showMeetingSheet(
           point, 
           isNewSuggestion: false,
-          allowReject: true,
-          allowAccept: true
+          viewOnly: true
         );
+        return;
       }
-    } else {
-      // For other statuses, just show info
-      _showMeetingSheet(
-        point, 
-        isNewSuggestion: false,
-        viewOnly: true
-      );
     }
   }
 
@@ -347,7 +369,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
             
             // Clear all markers first
             _markers.clear();
-            _cellMarkers.clear();
             
             // Add previous location markers
             for (var prevLocation in _suggestedMeeting!.previousLocations) {
@@ -379,7 +400,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
             
             // Clear all markers first
             _markers.clear();
-            _cellMarkers.clear();
             
             // Add previous location markers
             for (var prevLocation in _suggestedMeeting!.previousLocations) {
@@ -428,7 +448,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               
               // Update markers to show history
               _markers.clear();
-              _cellMarkers.clear();
               
               // Add previous location markers
               for (var prevLocation in previousLocations) {
@@ -462,7 +481,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               _shouldShowPOIs = false;
               
               _markers.clear();
-              _cellMarkers.clear();
               _markers.add(_createPOIMarker(point, isCurrentSuggestion: true));
             });
           }
