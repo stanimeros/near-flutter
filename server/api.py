@@ -64,7 +64,9 @@ def ST_ClusterKMeans(min_lon, min_lat, max_lon, max_lat, num_clusters=5):
                 SELECT 
                     CASE 
                         WHEN (SELECT total FROM point_count) <= %s THEN id::text
-                        ELSE ST_ClusterKMeans(geom, %s) OVER ()::text
+                        ELSE ST_ClusterKMeans(geom, 
+                            LEAST((SELECT total FROM point_count), %s)::integer
+                        ) OVER ()::text
                     END as cluster_id,
                     geom
                 FROM points
