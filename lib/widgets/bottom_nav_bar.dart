@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 class BottomNavBar extends StatefulWidget {
   final Function changePage;
@@ -27,7 +27,7 @@ class _BottomNavBarState extends State<BottomNavBar> {
           label: 'Friends',
         ),
         NavigationDestination(
-          icon: Icon(LucideIcons.bell),
+          icon: Icon(LucideIcons.userSearch),
           label: 'Requests',
         ),
         NavigationDestination(

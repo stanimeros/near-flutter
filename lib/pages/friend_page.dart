@@ -4,7 +4,8 @@ import 'package:flutter_near/models/near_user.dart';
 import 'package:flutter_near/pages/map_page.dart';
 import 'package:flutter_near/services/firestore.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:flutter_near/widgets/profile_picture.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 class FriendPage extends StatelessWidget {
   final NearUser friend;
@@ -54,20 +55,17 @@ class FriendPage extends StatelessWidget {
         scrolledUnderElevation: 0,
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
+        leading: IconButton(
+          icon: const Icon(LucideIcons.chevronLeft),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: Row(
           children: [
-            Hero(
-              tag: 'profile-${friend.uid}',
-              child: CircleAvatar(
-                radius: 20,
-                backgroundImage: friend.imageURL.isNotEmpty ? 
-                  NetworkImage(friend.imageURL) : null,
-                child: friend.imageURL.isEmpty ? 
-                  Text(
-                    friend.username[0].toUpperCase(),
-                    style: const TextStyle(fontSize: 20),
-                  ) : null,
-              ),
+            ProfilePicture(
+              user: friend,
+              size: 42,
+              color: Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black,
+              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
             ),
             const SizedBox(width: 12),
             Text(friend.username),
@@ -75,7 +73,7 @@ class FriendPage extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            icon: const Icon(LucideIcons.trash2),
+            icon: const Icon(LucideIcons.userX),
             color: Theme.of(context).colorScheme.error,
             onPressed: () => _confirmDeleteFriend(context),
           ),
@@ -91,10 +89,10 @@ class FriendPage extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(LucideIcons.map),
-                  const SizedBox(width: 12),
+                  const Icon(LucideIcons.locate),
+                  const SizedBox(width: 8),
                   Text(
-                    'Currently ${currentUser.getConvertedDistanceBetweenUser(friend)} away',
+                    'Approximately ${currentUser.getConvertedDistanceBetweenUser(friend)} away',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ],

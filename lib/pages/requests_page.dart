@@ -4,8 +4,8 @@ import 'package:flutter_near/models/near_user.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:flutter_near/widgets/messenger.dart';
 import 'package:flutter_near/widgets/profile_picture.dart';
-import 'package:lucide_icons/lucide_icons.dart';
 import 'package:flutter_near/services/user_provider.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 class RequestsPage extends StatefulWidget {
@@ -55,10 +55,17 @@ class _RequestsPageState extends State<RequestsPage> {
                   labelText: 'Username',
                   suffixIcon: IconButton(
                     padding: EdgeInsets.zero,
-                    onPressed: () {
-                      if (uController.text.length > 3 && uController.text.length < 13) {
-                        FirestoreService().sendRequest(nearUser!.uid, uController.text);
-                        uController.clear();
+                    onPressed: () async {
+                      FocusScope.of(context).unfocus();
+                      if (uController.text.length >= 4 && uController.text.length <= 10) {
+                        final response = await FirestoreService().sendRequest(nearUser!.uid, uController.text);
+                        if (response == null){
+                          uController.clear();
+                        }else if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(response)));
+                        }
+                      }else{
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Username must be at least 4 characters long')));
                       }
                     },
                     icon: const Icon(LucideIcons.userCheck),
@@ -111,7 +118,7 @@ class _RequestsPageState extends State<RequestsPage> {
                                   user: usersRequested[index],
                                   size: 40,
                                   color: Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black,
-                                  backgroundColor: Theme.of(context).colorScheme.surface,
+                                  backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
                                 ),
                                 title: Text(usersRequested[index].username),
                                 trailing: IconButton(

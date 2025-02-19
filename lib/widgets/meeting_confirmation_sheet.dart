@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:action_slider/action_slider.dart';
 import 'package:flutter_near/models/meeting.dart';
 import 'package:flutter_near/services/spatial_db.dart';
-import 'package:lucide_icons/lucide_icons.dart';
-
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 class MeetingConfirmationSheet extends StatefulWidget {
   final Point point;
   final Meeting? currentMeeting;

@@ -11,6 +11,8 @@ import 'package:flutter_near/services/spatial_db.dart';
 import 'package:flutter_near/widgets/meeting_confirmation_sheet.dart';
 import 'dart:async';
 
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 class MapPage extends StatefulWidget {
   final NearUser? friend;
   final NearUser? currentUser;
@@ -508,6 +510,10 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(LucideIcons.chevronLeft),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: Text('Meet with ${widget.friend!.username}'),
       ),
       body: Stack(

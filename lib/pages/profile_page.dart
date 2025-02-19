@@ -1,10 +1,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_near/services/firestore.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:flutter_near/widgets/pick_profile_picture.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_near/services/user_provider.dart';
 
@@ -19,7 +20,6 @@ class _ProfilePageState extends State<ProfilePage> {
   XFile? newProfilePicture;
   final ImagePicker picker = ImagePicker();
 
-  bool hasChanges = false;
   bool isLoading = false;
   bool uInvalid = false;
   FocusNode uFocusNode = FocusNode();
@@ -70,7 +70,6 @@ class _ProfilePageState extends State<ProfilePage> {
         if (mounted) {
           setState(() {
             isLoading = false;
-            hasChanges = false;
           });
         }
       } catch (e) {
@@ -102,7 +101,6 @@ class _ProfilePageState extends State<ProfilePage> {
     
     setState(() {
       newProfilePicture = selectedImage;
-      hasChanges = true;
     });
 
     return newProfilePicture;
@@ -159,7 +157,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 pickImage: pickImage,
                 size: 55,
                 color: Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black,
-                backgroundColor: Theme.of(context).colorScheme.surface
+                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
               ),
               const SizedBox(width: 12),
               Text(
@@ -169,20 +167,11 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
               const Spacer(),
-              SizedBox(
-                width: 50,
-                child: Visibility(
-                  visible: hasChanges,
-                  child: isLoading ? const CustomLoader()
-                  : IconButton(
-                    onPressed: () {
-                      saveChanges();
-                    },
-                    icon: const Icon(
-                      size: 18,
-                      LucideIcons.save
-                    ),
-                  ),
+              IconButton(
+                onPressed: () => _confirmSignOut(context),
+                icon: const Icon(
+                  size: 18,
+                  LucideIcons.logOut
                 ),
               )
             ]
@@ -202,11 +191,6 @@ class _ProfilePageState extends State<ProfilePage> {
                 uInvalid = uError(uController.text) != null;
               });
               uFocusNode.unfocus();
-            },
-            onChanged: (value) {
-              setState(() {
-                hasChanges = true;
-              });
             },
             decoration: InputDecoration(
               labelText: 'Username',
@@ -230,16 +214,20 @@ class _ProfilePageState extends State<ProfilePage> {
                 'k-Anonymity: ${kValue.round()}',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
+              Text(
+                'Adjust the level of anonymity for your data.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
               Slider(
                 value: kValue,
                 min: 2,
                 max: 20,
                 divisions: 18,
+                padding: EdgeInsets.symmetric(vertical: 12),
                 label: kValue.round().toString(),
                 onChanged: (value) {
                   setState(() {
                     kValue = value;
-                    hasChanges = true;
                   });
                 },
               ),
@@ -247,13 +235,14 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           const Spacer(),
           ElevatedButton(
-            onPressed: () => _confirmSignOut(context),
-            child: const Row(
+            onPressed: isLoading ? null : () => saveChanges(),
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text('Sign out'),
+                Text('Save changes'),
                 SizedBox(width: 8),
-                Icon(LucideIcons.logOut, size: 18)
+                if (isLoading) Icon(LucideIcons.loader, size: 18).animate().rotate(duration: 1.seconds, curve: Curves.linear),
+                if (!isLoading) Icon(LucideIcons.save, size: 18),
               ],
             ),
           ),

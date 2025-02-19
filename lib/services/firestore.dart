@@ -94,7 +94,7 @@ class FirestoreService {
     }
   }
 
-  Future<void> sendRequest(String uid, String username) async {
+  Future<String?> sendRequest(String uid, String username) async {
     try {
       String? fuid = await getUID(username);
       if (fuid != null) {
@@ -117,10 +117,22 @@ class FirestoreService {
             'users': [uid, fuid],
             'status': 'pending'
           }, SetOptions(merge: true));
+
+          return null;
+        }else{
+          Map<String, dynamic> requestData = requestsSnapshot.docs.first.data() as Map<String, dynamic>;
+          if (requestData['status'] == 'pending'){
+            return 'There is already a request between these users';
+          }else{
+            return 'There is already a friendship between these users';
+          }
         }
+      }else{
+        return 'User not found';
       }
     } catch(e) {
       debugPrint('Error sendRequest: $e');
+      return 'Error sending request';
     }
   }
 

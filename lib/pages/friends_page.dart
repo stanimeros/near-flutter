@@ -104,7 +104,7 @@ class _FriendsPageState extends State<FriendsPage> {
                               Colors.black,
                           backgroundColor: Theme.of(context)
                               .colorScheme
-                              .surface,
+                              .surfaceContainerHigh,
                         ),
                         title: Text(oFriends[index].username),
                         onTap: () {
