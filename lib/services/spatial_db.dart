@@ -297,7 +297,7 @@ class SpatialDb {
     List<Point> downloadedPoints = [];
     try {
       // Using http instead of https since port 5000 might not be configured for SSL
-      final uri = Uri.http('snf-78417.ok-kno.grnetcloud.net:5000', '/api/points', {
+      final uri = Uri.https('snf-78417.ok-kno.grnetcloud.net', '/api/points', {
         'minLon': boundingBox.minLon.toStringAsFixed(6),
         'minLat': boundingBox.minLat.toStringAsFixed(6),
         'maxLon': boundingBox.maxLon.toStringAsFixed(6),
@@ -393,43 +393,9 @@ class SpatialDb {
     return downloadedPoints;
   }
 
-  Future<List<Point>> getClusters(BoundingBox boundingBox) async {
-    try {
-      final uri = Uri.http('snf-78417.ok-kno.grnetcloud.net:5000', '/api/clusters', {
-        'minLon': boundingBox.minLon.toStringAsFixed(6),
-        'minLat': boundingBox.minLat.toStringAsFixed(6),
-        'maxLon': boundingBox.maxLon.toStringAsFixed(6),
-        'maxLat': boundingBox.maxLat.toStringAsFixed(6),
-        'clusters': clusters.toString(),
-      });
-      debugPrint('Downloading clusters from server: $uri');
-      final response = await http.get(uri).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw TimeoutException('Request timed out');
-        },
-      );
-
-      if (response.statusCode != 200) {
-        throw HttpException('Failed with status: ${response.statusCode}');
-      }
-      
-      final data = jsonDecode(response.body);
-      return data['clusters'].map<Point>((cluster) {
-        return Point(
-          cluster['longitude'],
-          cluster['latitude'],
-        );
-      }).toList();
-    } catch (e) {
-      debugPrint('Error getting clusters: $e');
-      return [];
-    }
-  }
-
   Future<List<Point>> getClustersBetweenTwoPoints(Point point1, Point point2, int clusters) async {
     try {
-      final uri = Uri.http('snf-78417.ok-kno.grnetcloud.net:5000', '/api/two-point-clusters', {
+      final uri = Uri.https('snf-78417.ok-kno.grnetcloud.net', '/api/two-point-clusters', {
         'lon1': point1.lon.toStringAsFixed(6),
         'lat1': point1.lat.toStringAsFixed(6),
         'lon2': point2.lon.toStringAsFixed(6),
