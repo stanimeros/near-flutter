@@ -52,4 +52,4 @@ ios/Runner/GoogleService-Info.plist
 *.key
 *.keystore
 
-/venv/
+/server/venv/

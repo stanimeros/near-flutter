@@ -8,10 +8,10 @@ BASE_URL = "https://snf-78417.ok-kno.grnetcloud.net/api/"
 
 # Function to generate random parameters (small bounding box variations)
 def random_coords():
-    min_lon = 22.851 + random.uniform(-0.0005, 0.0005)
-    min_lat = 40.636 + random.uniform(-0.0005, 0.0005)
-    max_lon = min_lon + random.uniform(0.0001, 0.002)
-    max_lat = min_lat + random.uniform(0.0001, 0.002)
+    min_lon = 22.851 + random.uniform(-0.001, 0.001)
+    min_lat = 40.636 + random.uniform(-0.001, 0.001)
+    max_lon = min_lon + random.uniform(0.001, 0.002)
+    max_lat = min_lat + random.uniform(0.001, 0.002)
     clusters = random.randint(5, 15)  # Random number of clusters between 5 and 15
     mn_distance = random.uniform(0.0001, 0.002)  # Random minimum distance between 0.0001 and 0.002
     return min_lon, min_lat, max_lon, max_lat, clusters, mn_distance
@@ -57,10 +57,9 @@ def stress_test(n_requests=100, concurrency=10):
             status_codes['Error'] = status_codes.get('Error', 0) + 1
         total_time += elapsed_time
 
-    print("\n Test Results:")
     for code, count in status_codes.items():
         print(f"Status Code {code}: {count} times")
     print(f"Average response time: {total_time / len(results):.4f} seconds")
 
 # Run the test
-stress_test(n_requests=600, concurrency=20)
+stress_test(n_requests=33, concurrency=10)

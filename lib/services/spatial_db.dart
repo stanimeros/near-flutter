@@ -395,7 +395,7 @@ class SpatialDb {
 
   Future<List<Point>> getClustersBetweenTwoPoints(Point point1, Point point2, int clusters) async {
     try {
-      final uri = Uri.https('snf-78417.ok-kno.grnetcloud.net', '/api/two-point-clusters', {
+      final uri = Uri.https('snf-78417.ok-kno.grnetcloud.net', '/api/kmeans', {
         'lon1': point1.lon.toStringAsFixed(6),
         'lat1': point1.lat.toStringAsFixed(6),
         'lon2': point2.lon.toStringAsFixed(6),
