@@ -393,22 +393,35 @@ class SpatialDb {
     return downloadedPoints;
   }
 
-  Future<List<Point>> getClustersBetweenTwoPoints(Point point1, Point point2, int clusters) async {
+  Future<List<Point>> getClustersBetweenTwoPoints(Point point1, Point point2, {method = 'dbscan', int clusters = 20, double eps = 0.00025, int minPoints = 2, http.Client? httpClient}) async {
     try {
-      final uri = Uri.https('snf-78417.ok-kno.grnetcloud.net', '/api/kmeans', {
+      final uri = Uri.https('snf-78417.ok-kno.grnetcloud.net', '/api/$method', {
         'lon1': point1.lon.toStringAsFixed(6),
         'lat1': point1.lat.toStringAsFixed(6),
         'lon2': point2.lon.toStringAsFixed(6),
         'lat2': point2.lat.toStringAsFixed(6),
-        'clusters': clusters.toString(),
+        if (method == 'kmeans') 'clusters': clusters.toString(),
+        if (method == 'dbscan') 'eps': eps.toStringAsFixed(6),
+        if (method == 'dbscan') 'minPoints': minPoints.toString(),
       });
+      
+      http.Response response;
       debugPrint('Downloading clusters between two points: $uri');
-      final response = await http.get(uri).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw TimeoutException('Request timed out');
-        },
-      );
+      if (httpClient == null) {
+        response = await http.get(uri).timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            throw TimeoutException('Request timed out');
+          },
+        );
+      } else {
+        response = await httpClient.get(uri).timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            throw TimeoutException('Request timed out');
+          },
+        );
+      }
 
       if (response.statusCode != 200) {
         throw HttpException('Failed with status: ${response.statusCode}');

@@ -1,36 +1,13 @@
+import ssl  # Add this import
+import psycopg2 # type: ignore
 from flask import Flask, request, jsonify # type: ignore
 from psycopg2.extras import RealDictCursor # type: ignore
-from psycopg2.pool import SimpleConnectionPool # type: ignore
-from contextlib import contextmanager # type: ignore
-from flask_limiter import Limiter # type: ignore
-from flask_limiter.util import get_remote_address # type: ignore
 from gevent.pywsgi import WSGIServer # type: ignore
-import ssl  # Add this import
 
 app = Flask(__name__)
 
-# Simple connection pool
-pool = SimpleConnectionPool(
-    minconn=5,     # Minimum connections
-    maxconn=20,    # Maximum connections
-    dbname="osm_points",
-    user="postgres"
-)
-
-# Add rate limiter with generous limits
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    default_limits=["200 per minute", "10 per second"]  # Allow bursts of requests
-)
-
-@contextmanager
 def get_db_connection():
-    conn = pool.getconn()
-    try:
-        yield conn
-    finally:
-        pool.putconn(conn)
+    return psycopg2.connect("dbname=osm_points user=postgres")
 
 @app.route('/api/points', methods=['GET'])
 def get_points_in_bbox():
@@ -43,19 +20,20 @@ def get_points_in_bbox():
         
         # Connect to database
         conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur = conn.cursor(cursor_factory=RealDictCursor)  # Create cursor
         # cur.execute("SET enable_seqscan = off")
-        
+    
         # Query points within bbox
         cur.execute("""
             SELECT id, 
-                   ST_X(geom) as longitude,
-                   ST_Y(geom) as latitude
+                ST_X(geom) as longitude,
+                ST_Y(geom) as latitude
             FROM osm_points
             WHERE geom && ST_MakeEnvelope(%s, %s, %s, %s, 4326)
         """, (min_lon, min_lat, max_lon, max_lat))
         
         points = cur.fetchall()
+        cur.close()
         
         return jsonify({
             'count': len(points),
@@ -72,8 +50,7 @@ def kmeans():
         lat1 = float(request.args.get('lat1'))
         lon2 = float(request.args.get('lon2'))
         lat2 = float(request.args.get('lat2'))
-        
-        num_clusters = int(request.args.get('numClusters', 5))
+        clusters = int(request.args.get('clusters', 5))
         
         # Create bounding box from the two points
         min_lon = min(lon1, lon2)
@@ -91,9 +68,10 @@ def kmeans():
         max_lat += lat_padding
 
         # Connect to database
+        # Fixed: Use the connection correctly
         conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        
+        cur = conn.cursor(cursor_factory=RealDictCursor)  # Create cursor
+
         # Query clusters using PostgreSQL's k-means
         cur.execute("""
             WITH points AS (
@@ -131,9 +109,10 @@ def kmeans():
                 (SELECT total <= %s FROM point_count) as is_individual_points
             FROM final
             ORDER BY point_count DESC
-        """, (min_lon, min_lat, max_lon, max_lat, num_clusters, num_clusters, num_clusters))
+        """, (min_lon, min_lat, max_lon, max_lat, clusters, clusters, clusters))
         
         results = cur.fetchall()
+        cur.close()
         
         return jsonify({
             'count': len(results),
@@ -151,7 +130,6 @@ def dbscan():
         lat1 = float(request.args.get('lat1'))
         lon2 = float(request.args.get('lon2'))
         lat2 = float(request.args.get('lat2'))
-        
         eps = float(request.args.get('eps', 0.00025))
         min_points = int(request.args.get('minPoints', 2))
         
@@ -173,7 +151,7 @@ def dbscan():
         # Connect to database
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        
+            
         # Query clusters using PostgreSQL's DBSCAN
         cur.execute("""
             WITH points AS (
@@ -210,9 +188,10 @@ def dbscan():
             FROM final
             ORDER BY point_count DESC
         """, (min_lon, min_lat, max_lon, max_lat, min_points, eps, min_points, min_points))
-        
+    
         results = cur.fetchall()
-        
+        cur.close()
+            
         return jsonify({
             'count': len(results),
             'clusters': results,
@@ -238,9 +217,4 @@ if __name__ == '__main__':
     )
     
     print('Starting server...')
-    try:
-        http_server.serve_forever()
-    finally:
-        # Only close the pool when the server actually shuts down
-        if pool:
-            pool.closeall()
+    http_server.serve_forever()

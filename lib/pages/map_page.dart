@@ -1,5 +1,7 @@
-import 'dart:math';
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:flutter_near/services/firestore.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -9,8 +11,6 @@ import 'package:flutter_near/models/meeting.dart';
 import 'package:flutter_near/models/near_user.dart';
 import 'package:flutter_near/services/spatial_db.dart';
 import 'package:flutter_near/widgets/meeting_confirmation_sheet.dart';
-import 'dart:async';
-
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 class MapPage extends StatefulWidget {
@@ -30,6 +30,7 @@ class MapPage extends StatefulWidget {
 }
 
 class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
+  final http.Client httpClient = http.Client();
   GoogleMapController? _mapController;
   
   LatLng? initialPosition;
@@ -91,6 +92,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   void dispose() {
     _mapController?.dispose();
     _mapController = null;
+    httpClient.close();
     super.dispose();
   }
 
@@ -171,9 +173,25 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
     // Only show polygons and load cells if we're showing POIs
     if (_shouldShowPOIs) {
-      final zoomLevel = await _mapController!.getZoomLevel();
-      final zoom = max(1, zoomLevel.toInt() - 12);
-      final points = await SpatialDb().getClustersBetweenTwoPoints(widget.currentUser!.getPoint(), widget.friend!.getPoint(), zoom);
+      final bounds = await _mapController!.getVisibleRegion();
+      final eastPoint = GeoPoint(bounds.northeast.latitude, bounds.northeast.longitude);
+      final westPoint = GeoPoint(bounds.southwest.latitude, bounds.southwest.longitude);
+      
+      // Calculate eps as a fraction of the map width
+      double eps = Geolocator.distanceBetween(
+        eastPoint.latitude,
+        eastPoint.longitude,
+        westPoint.latitude,
+        westPoint.longitude
+      ) / 25 / 111000; // Convert meters to degrees (roughly)
+
+      final points = await SpatialDb().getClustersBetweenTwoPoints(
+        widget.currentUser!.getPoint(), 
+        widget.friend!.getPoint(), 
+        method: 'dbscan',
+        eps: eps,
+        httpClient: httpClient
+      );
 
       for (var point in points) {
         _markers.add(_createPOIMarker(point));
