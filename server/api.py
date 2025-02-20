@@ -1,16 +1,36 @@
+from gevent import monkey  # type: ignore
+monkey.patch_all()  # Add this at the very top of the file, before other imports
+
 import ssl  # Add this import
 import psycopg2 # type: ignore
 from flask import Flask, request, jsonify # type: ignore
 from psycopg2.extras import RealDictCursor # type: ignore
 from gevent.pywsgi import WSGIServer # type: ignore
+from psycopg2.pool import ThreadedConnectionPool  #type: ignore
 
 app = Flask(__name__)
 
+# Create a global connection pool
+db_pool = ThreadedConnectionPool(
+    minconn=5,      # Minimum number of connections
+    maxconn=50,     # Maximum number of connections
+    dsn="dbname=osm_points user=postgres"
+)
+
+# Replace get_db_connection with pool-based version
 def get_db_connection():
-    return psycopg2.connect("dbname=osm_points user=postgres")
+    return db_pool.getconn()
+
+def return_db_connection(conn):
+    db_pool.putconn(conn)
+
+@app.route('/favicon.ico')
+def favicon():
+    return '', 204 
 
 @app.route('/api/points', methods=['GET'])
 def get_points_in_bbox():
+    conn = None
     try:
         # Get parameters from query string
         min_lon = float(request.args.get('minLon'))
@@ -18,9 +38,9 @@ def get_points_in_bbox():
         max_lon = float(request.args.get('maxLon'))
         max_lat = float(request.args.get('maxLat'))
         
-        # Connect to database
+        # Get connection from pool
         conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)  # Create cursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
         # cur.execute("SET enable_seqscan = off")
     
         # Query points within bbox
@@ -41,6 +61,9 @@ def get_points_in_bbox():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+    finally:
+        if conn:
+            return_db_connection(conn)  # Return connection to pool
 
 @app.route('/api/kmeans', methods=['GET'])
 def kmeans():
@@ -121,6 +144,9 @@ def kmeans():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+    finally:
+        if conn:
+            return_db_connection(conn)  # Return connection to pool
 
 @app.route('/api/dbscan', methods=['GET'])
 def dbscan():
@@ -199,22 +225,23 @@ def dbscan():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+    finally:
+        if conn:
+            return_db_connection(conn)  # Return connection to pool
 
 if __name__ == '__main__':
     ssl_cert = '/etc/letsencrypt/live/snf-78417.ok-kno.grnetcloud.net/fullchain.pem'
     ssl_key = '/etc/letsencrypt/live/snf-78417.ok-kno.grnetcloud.net/privkey.pem'
     
-    # Create SSL context with modern settings
     ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     ssl_context.load_cert_chain(certfile=ssl_cert, keyfile=ssl_key)
-    ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
-    ssl_context.options |= ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1
-    
+
     http_server = WSGIServer(
-        ('0.0.0.0', 443), 
-        app,
-        ssl_context=ssl_context  # Use the SSL context instead of direct cert/key files
+        application=app,
+        ssl_context=ssl_context,
+        listener=('0.0.0.0', 443), 
+        spawn=100,  # Keep high number of workers
     )
     
-    print('Starting server...')
+    print('Starting server with connection pool and multiple workers...')
     http_server.serve_forever()
