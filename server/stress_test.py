@@ -8,10 +8,10 @@ BASE_URL = "https://snf-78417.ok-kno.grnetcloud.net/api/"
 
 # Function to generate random parameters (small bounding box variations)
 def random_coords():
-    min_lon = 22.851 + random.uniform(-0.001, 0.001)
-    min_lat = 40.636 + random.uniform(-0.001, 0.001)
-    max_lon = min_lon + random.uniform(0.001, 0.002)
-    max_lat = min_lat + random.uniform(0.001, 0.002)
+    min_lon = 22.94 + random.uniform(-0.005, 0.005)
+    min_lat = 40.62 + random.uniform(-0.005, 0.005)
+    max_lon = min_lon + random.uniform(0.005, 0.01)
+    max_lat = min_lat + random.uniform(0.005, 0.01)
     clusters = random.randint(5, 15)  # Random number of clusters between 5 and 15
     mn_distance = random.uniform(0.0001, 0.002)  # Random minimum distance between 0.0001 and 0.002
     return min_lon, min_lat, max_lon, max_lat, clusters, mn_distance
@@ -30,16 +30,16 @@ def fetch_url(endpoint):
         print(f"URL: {endpoint}")
         return "Error", str(e)
 # Function to test API with random parameters
-def stress_test(n_requests=100, concurrency=10):
+def stress_test(requests=100, concurrency=10):
     urls = []
 
-    for _ in range(n_requests):
+    for _ in range(requests//3):
         min_lon, min_lat, max_lon, max_lat, clusters, mn_distance = random_coords()
 
         # Generate endpoints with random parameters
         urls.append(f"{BASE_URL}points?minLon={min_lon}&minLat={min_lat}&maxLon={max_lon}&maxLat={max_lat}")
-        urls.append(f"{BASE_URL}two-point-clusters?lon1={min_lon}&lat1={min_lat}&lon2={max_lon}&lat2={max_lat}&method=kmeans&clusters={clusters}")
-        urls.append(f"{BASE_URL}two-point-clusters?lon1={min_lon}&lat1={min_lat}&lon2={max_lon}&lat2={max_lat}&method=dbscan&maxDistance={mn_distance}")
+        urls.append(f"{BASE_URL}kmeans?lon1={min_lon}&lat1={min_lat}&lon2={max_lon}&lat2={max_lat}&clusters={clusters}")
+        urls.append(f"{BASE_URL}dbscan?lon1={min_lon}&lat1={min_lat}&lon2={max_lon}&lat2={max_lat}&eps={mn_distance}&minPoints=1")
 
     print(f"Starting stress test with {len(urls)} requests and concurrency={concurrency}...")
 
@@ -62,4 +62,4 @@ def stress_test(n_requests=100, concurrency=10):
     print(f"Average response time: {total_time / len(results):.4f} seconds")
 
 # Run the test
-stress_test(n_requests=33, concurrency=10)
+stress_test(requests=100, concurrency=50)

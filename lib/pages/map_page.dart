@@ -183,7 +183,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         eastPoint.longitude,
         westPoint.latitude,
         westPoint.longitude
-      ) / 25 / 111000; // Convert meters to degrees (roughly)
+      ) / 20 / 111000; // Convert meters to degrees (roughly)
 
       final points = await SpatialDb().getClustersBetweenTwoPoints(
         widget.currentUser!.getPoint(), 

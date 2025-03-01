@@ -2,7 +2,7 @@ from gevent import monkey  # type: ignore
 monkey.patch_all()  # Add this at the very top of the file, before other imports
 
 import ssl  # Add this import
-import psycopg2 # type: ignore
+import multiprocessing
 from flask import Flask, request, jsonify # type: ignore
 from psycopg2.extras import RealDictCursor # type: ignore
 from gevent.pywsgi import WSGIServer # type: ignore
@@ -12,8 +12,8 @@ app = Flask(__name__)
 
 # Create a global connection pool
 db_pool = ThreadedConnectionPool(
-    minconn=5,      # Minimum number of connections
-    maxconn=50,     # Maximum number of connections
+    minconn=10,      # Minimum number of connections
+    maxconn=100,     # Maximum number of connections
     dsn="dbname=osm_points user=postgres"
 )
 
@@ -236,11 +236,14 @@ if __name__ == '__main__':
     ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     ssl_context.load_cert_chain(certfile=ssl_cert, keyfile=ssl_key)
 
+    cpu_cores = multiprocessing.cpu_count()
+    optimal_workers = cpu_cores * 2
+
     http_server = WSGIServer(
         application=app,
         ssl_context=ssl_context,
         listener=('0.0.0.0', 443), 
-        spawn=100,  # Keep high number of workers
+        spawn=optimal_workers,
     )
     
     print('Starting server with connection pool and multiple workers...')
