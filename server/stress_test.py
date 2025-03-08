@@ -33,13 +33,15 @@ def fetch_url(endpoint):
 def stress_test(requests=100, concurrency=10):
     urls = []
 
-    for _ in range(requests//3):
+    for _ in range(requests):
         min_lon, min_lat, max_lon, max_lat, clusters, mn_distance = random_coords()
 
         # Generate endpoints with random parameters
-        urls.append(f"{BASE_URL}points?minLon={min_lon}&minLat={min_lat}&maxLon={max_lon}&maxLat={max_lat}")
-        urls.append(f"{BASE_URL}kmeans?lon1={min_lon}&lat1={min_lat}&lon2={max_lon}&lat2={max_lat}&clusters={clusters}")
-        urls.append(f"{BASE_URL}dbscan?lon1={min_lon}&lat1={min_lat}&lon2={max_lon}&lat2={max_lat}&eps={mn_distance}&minPoints=1")
+        # urls.append(f"{BASE_URL}points?minLon={min_lon}&minLat={min_lat}&maxLon={max_lon}&maxLat={max_lat}")
+        # urls.append(f"{BASE_URL}kmeans?lon1={min_lon}&lat1={min_lat}&lon2={max_lon}&lat2={max_lat}&clusters={clusters}")
+        # urls.append(f"{BASE_URL}dbscan?lon1={min_lon}&lat1={min_lat}&lon2={max_lon}&lat2={max_lat}&eps={mn_distance}&minPoints=1")
+        urls.append(f"{BASE_URL}cache_clusters?lon1={min_lon}&lat1={min_lat}&lon2={max_lon}&lat2={max_lat}&eps={mn_distance}&minPoints=1")
+
 
     print(f"Starting stress test with {len(urls)} requests and concurrency={concurrency}...")
 
@@ -62,4 +64,4 @@ def stress_test(requests=100, concurrency=10):
     print(f"Average response time: {total_time / len(results):.4f} seconds")
 
 # Run the test
-stress_test(requests=100, concurrency=50)
+stress_test(requests=300, concurrency=100)

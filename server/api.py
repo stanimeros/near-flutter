@@ -1,14 +1,24 @@
 from gevent import monkey  # type: ignore
 monkey.patch_all()  # Add this at the very top of the file, before other imports
 
-import ssl  # Add this import
+import ssl 
+import logging
 import multiprocessing
 from flask import Flask, request, jsonify # type: ignore
+from flask_caching import Cache # type: ignore
 from psycopg2.extras import RealDictCursor # type: ignore
 from gevent.pywsgi import WSGIServer # type: ignore
 from psycopg2.pool import ThreadedConnectionPool  #type: ignore
 
 app = Flask(__name__)
+app.config['DEBUG'] = True
+
+app.config['CACHE_TYPE'] = 'simple'
+cache = Cache(app)
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, filename='app.log', filemode='a',
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Create a global connection pool
 db_pool = ThreadedConnectionPool(
@@ -228,6 +238,103 @@ def dbscan():
     finally:
         if conn:
             return_db_connection(conn)  # Return connection to pool
+
+def get_clusters_from_cache(lon1, lat1, lon2, lat2, grid_size):
+    cache_key = f"clusters:{lon1}:{lat1}:{lon2}:{lat2}:{grid_size}"
+    cached_data = cache.get(cache_key)
+    return cached_data if cached_data else None
+
+def add_clusters_to_cache(lon1, lat1, lon2, lat2, grid_size, clusters):
+    cache_key = f"clusters:{lon1}:{lat1}:{lon2}:{lat2}:{grid_size}"
+    cache.set(cache_key, clusters, timeout=3600)  # Cache for 1 hour
+
+@app.route('/api/cache_clusters', methods=['GET'])
+def cache_clusters():
+    conn = None
+    try:
+        lon1 = float(request.args.get('lon1'))
+        lat1 = float(request.args.get('lat1'))
+        lon2 = float(request.args.get('lon2'))
+        lat2 = float(request.args.get('lat2'))
+        eps = float(request.args.get('eps', 0.00025))
+        min_points = int(request.args.get('minPoints', 2))
+        grid_size = float(request.args.get('gridSize', 0.01))  # Default: 0.01°
+
+        logging.info(f"Cache Clusters called with: lon1={lon1}, lat1={lat1}, lon2={lon2}, lat2={lat2}, eps={eps}, minPoints={min_points}, gridSize={grid_size}")
+
+        # Check cache first
+        cached_clusters = get_clusters_from_cache(lon1, lat1, lon2, lat2, grid_size)
+        if cached_clusters:
+            logging.info("Returning cached clusters.")
+            return jsonify({'count': len(cached_clusters), 'clusters': cached_clusters, 'is_clustered': True})
+
+        # Query the database
+        logging.info("Querying database for clusters...")
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("""
+            WITH points AS (
+                SELECT id, geom,
+                    FLOOR(ST_X(geom) / %s) AS grid_x,
+                    FLOOR(ST_Y(geom) / %s) AS grid_y
+                FROM osm_points
+                WHERE geom && ST_MakeEnvelope(%s, %s, %s, %s, 4326)
+            ),
+            point_count AS (
+                SELECT COUNT(*) as total FROM points
+            ),
+            result AS (
+                SELECT 
+                    grid_x, grid_y,
+                    CASE
+                        WHEN (SELECT total FROM point_count) <= %s THEN id::text
+                        ELSE ST_ClusterDBSCAN(geom, eps := %s, minpoints := %s) OVER (PARTITION BY grid_x, grid_y)::text
+                    END as cluster_id,
+                    geom
+                FROM points
+            ),
+            final AS (
+                SELECT 
+                    grid_x, grid_y,
+                    cluster_id,
+                    ST_Centroid(ST_Collect(geom)) as center,
+                    COUNT(*) as point_count
+                FROM result
+                GROUP BY grid_x, grid_y, cluster_id
+            )
+            SELECT 
+                grid_x, grid_y,
+                cluster_id,
+                ST_X(center) as longitude,
+                ST_Y(center) as latitude,
+                point_count,
+                (SELECT total <= %s FROM point_count) as is_individual_points
+            FROM final
+            ORDER BY grid_x, grid_y, point_count DESC;
+        """, (grid_size, grid_size, lon1, lat1, lon2, lat2, min_points, eps, min_points, min_points))
+
+        results = cur.fetchall()
+        cur.close()
+
+        logging.info(f"Query returned {len(results)} clusters across {len(set((r['grid_x'], r['grid_y']) for r in results))} grid cells.")
+
+        # Cache results
+        add_clusters_to_cache(lon1, lat1, lon2, lat2, grid_size, results)
+
+        return jsonify({
+            'count': len(results),
+            'clusters': results,
+            'is_clustered': not (results[0]['is_individual_points'] if results else False)
+        })
+
+    except Exception as e:
+        logging.error(f"Error in cache_clusters: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+    finally:
+        if conn:
+            return_db_connection(conn)
 
 if __name__ == '__main__':
     ssl_cert = '/etc/letsencrypt/live/snf-78417.ok-kno.grnetcloud.net/fullchain.pem'
