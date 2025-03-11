@@ -133,23 +133,23 @@ def cache_clusters():
                 FROM osm_points
                 WHERE geom && ST_MakeEnvelope(%s, %s, %s, %s, 4326)
             ),
-            result AS (
+            clustered AS (
                 SELECT 
                     grid_x, grid_y,
-                    CASE
-                        WHEN COUNT(*) OVER () <= %s THEN id::text
-                        ELSE ST_ClusterDBSCAN(geom, eps := %s, minpoints := %s) OVER (PARTITION BY grid_x, grid_y)::text
-                    END as cluster_id,
+                    ST_ClusterDBSCAN(geom, eps := %s, minpoints := %s) OVER (PARTITION BY grid_x, grid_y) as cluster_id,
                     geom
                 FROM points
             ),
             final AS (
                 SELECT 
                     grid_x, grid_y,
-                    cluster_id,
+                    CASE 
+                        WHEN cluster_id IS NULL THEN 'noise'
+                        ELSE cluster_id::text 
+                    END as cluster_id,
                     ST_Centroid(ST_Collect(geom)) as center,
                     COUNT(*) as point_count
-                FROM result
+                FROM clustered
                 GROUP BY grid_x, grid_y, cluster_id
             )
             SELECT 
@@ -159,8 +159,8 @@ def cache_clusters():
                 ST_Y(center) as latitude,
                 point_count
             FROM final
-            ORDER BY grid_x, grid_y, point_count DESC;
-        """, (grid_size, grid_size, lon1, lat1, lon2, lat2, min_points, eps, min_points))
+            ORDER BY point_count DESC;    -- Order by size, largest first
+        """, (grid_size, grid_size, lon1, lat1, lon2, lat2, eps, min_points))
 
         results = cur.fetchall()
         
