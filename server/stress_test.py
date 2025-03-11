@@ -10,17 +10,17 @@ BASE_URL = "https://snf-78417.ok-kno.grnetcloud.net/api/"
 
 # Function to generate random parameters (small bounding box variations)
 def random_coords():
-    min_lon = 22.94 + random.uniform(-0.005, 0.005)
-    min_lat = 40.62 + random.uniform(-0.005, 0.005)
-    max_lon = min_lon + random.uniform(0.005, 0.01)
-    max_lat = min_lat + random.uniform(0.005, 0.01)
+    min_lon = 22.9 + random.uniform(-0.1, 0.1)
+    min_lat = 40.6 + random.uniform(-0.1, 0.1)
+    max_lon = min_lon + random.uniform(0.1, 0.1)
+    max_lat = min_lat + random.uniform(0.1, 0.1)
     return min_lon, min_lat, max_lon, max_lat
 
 # Function to make an API request
 def fetch_url(endpoint):
     start_time = time.time()
     try:
-        response = requests.get(endpoint, timeout=5)
+        response = requests.get(endpoint, timeout=30)
         elapsed_time = time.time() - start_time
         
         if response.status_code == 200:
@@ -57,7 +57,7 @@ async def stress_test(requests=100, concurrency=10):
 
     for _ in range(requests):
         min_lon, min_lat, max_lon, max_lat = random_coords()
-        urls.append(f"{BASE_URL}cache_clusters?lon1={min_lon}&lat1={min_lat}&lon2={max_lon}&lat2={max_lat}")
+        urls.append(f"{BASE_URL}clusters?lon1={min_lon}&lat1={min_lat}&lon2={max_lon}&lat2={max_lat}")
 
     print(f"\nStarting stress test with {len(urls)} requests and concurrency={concurrency}...")
 
