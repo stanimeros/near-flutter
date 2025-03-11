@@ -19,8 +19,8 @@ app.config['CACHE_TYPE'] = 'simple'
 cache = Cache(app)
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG, filename='app.log', filemode='a',
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, filename='app.log', filemode='a', 
+    format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Create a global connection pool
 db_pool = ThreadedConnectionPool(
@@ -97,57 +97,71 @@ def normalize_bbox(lon1, lat1, lon2, lat2, precision=4):
     
     return min_lon, min_lat, max_lon, max_lat
 
-def get_grid_key(lon, lat, grid_size=0.01):
-    """Get grid cell key for a coordinate"""
+def get_containing_cell(lon, lat, grid_size=0.1):  # Increased grid size
+    """Get the larger grid cell that contains this point"""
     return (floor(lon/grid_size), floor(lat/grid_size))
 
-def get_clusters_from_cache(lon1, lat1, lon2, lat2, grid_size, eps, min_points):
-    """Modified cache function with grid-based lookup"""
-    # Normalize coordinates
-    lon1, lat1, lon2, lat2 = normalize_bbox(lon1, lat1, lon2, lat2)
+def get_overlapping_cells(lon1, lat1, lon2, lat2, grid_size=0.1):
+    """Get all grid cells that overlap with this bbox"""
+    min_lon = min(lon1, lon2)
+    max_lon = max(lon1, lon2)
+    min_lat = min(lat1, lat2)
+    max_lat = max(lat1, lat2)
     
-    # Get grid cells for corners
-    grid_key1 = get_grid_key(lon1, lat1, grid_size)
-    grid_key2 = get_grid_key(lon2, lat2, grid_size)
+    start_cell = get_containing_cell(min_lon, min_lat, grid_size)
+    end_cell = get_containing_cell(max_lon, max_lat, grid_size)
     
-    # Create cache key with grid cells instead of exact coordinates
-    cache_key = f"clusters:grid_{grid_key1}_{grid_key2}:eps_{eps}:min_{min_points}"
+    cells = []
+    for x in range(start_cell[0], end_cell[0] + 1):
+        for y in range(start_cell[1], end_cell[1] + 1):
+            cells.append((x, y))
+    return cells
+
+def get_clusters_from_cache(lon1, lat1, lon2, lat2, eps, min_points):
+    """New cache function that checks overlapping grid cells"""
+    cells = get_overlapping_cells(lon1, lat1, lon2, lat2)
     
-    cached_data = cache.get(cache_key)
-    if cached_data:
-        # Check if cached bbox contains requested bbox
-        cached_bbox = cached_data.get('bbox', {})
-        if (cached_bbox.get('min_lon', float('inf')) <= lon1 and
-            cached_bbox.get('min_lat', float('inf')) <= lat1 and
-            cached_bbox.get('max_lon', float('-inf')) >= lon2 and
-            cached_bbox.get('max_lat', float('-inf')) >= lat2):
-            return cached_data['clusters']
+    all_clusters = []
+    for cell in cells:
+        cache_key = f"clusters:cell_{cell[0]}_{cell[1]}:eps_{eps}:min_{min_points}"
+        cell_clusters = cache.get(cache_key)
+        if cell_clusters:
+            all_clusters.extend(cell_clusters)
+    
+    if all_clusters:
+        # Filter clusters to only include those within the requested bbox
+        filtered_clusters = [
+            cluster for cluster in all_clusters
+            if (lon1 <= cluster['longitude'] <= lon2 and
+                lat1 <= cluster['latitude'] <= lat2)
+        ]
+        if filtered_clusters:
+            return filtered_clusters
+    
     return None
 
-def add_clusters_to_cache(lon1, lat1, lon2, lat2, grid_size, eps, min_points, clusters):
-    """Modified cache storage with grid-based keys"""
-    # Normalize coordinates
-    lon1, lat1, lon2, lat2 = normalize_bbox(lon1, lat1, lon2, lat2)
+def add_clusters_to_cache(lon1, lat1, lon2, lat2, eps, min_points, clusters):
+    """Store clusters in their respective grid cells"""
+    cells = get_overlapping_cells(lon1, lat1, lon2, lat2)
     
-    # Get grid cells
-    grid_key1 = get_grid_key(lon1, lat1, grid_size)
-    grid_key2 = get_grid_key(lon2, lat2, grid_size)
-    
-    cache_key = f"clusters:grid_{grid_key1}_{grid_key2}:eps_{eps}:min_{min_points}"
-    
-    cache_data = {
-        'bbox': {
-            'min_lon': lon1,
-            'min_lat': lat1,
-            'max_lon': lon2,
-            'max_lat': lat2
-        },
-        'clusters': clusters
-    }
-    
-    cache.set(cache_key, cache_data, timeout=3600)  # Cache for 1 hour
+    for cell in cells:
+        # Filter clusters for this cell
+        cell_min_lon = cell[0] * 0.1
+        cell_max_lon = (cell[0] + 1) * 0.1
+        cell_min_lat = cell[1] * 0.1
+        cell_max_lat = (cell[1] + 1) * 0.1
+        
+        cell_clusters = [
+            cluster for cluster in clusters
+            if (cell_min_lon <= cluster['longitude'] <= cell_max_lon and
+                cell_min_lat <= cluster['latitude'] <= cell_max_lat)
+        ]
+        
+        if cell_clusters:
+            cache_key = f"clusters:cell_{cell[0]}_{cell[1]}:eps_{eps}:min_{min_points}"
+            cache.set(cache_key, cell_clusters, timeout=7200)  # Cache for 2 hours
 
-@app.route('/api/cache_clusters', methods=['GET'])
+@app.route('/api/clusters', methods=['GET'])
 def cache_clusters():
     conn = None
     try:
@@ -157,9 +171,9 @@ def cache_clusters():
             lat1 = float(request.args.get('lat1'))
             lon2 = float(request.args.get('lon2'))
             lat2 = float(request.args.get('lat2'))
-            eps = round(float(request.args.get('eps', 0.00025)), 5)  # Round eps
-            min_points = int(request.args.get('minPoints', 2))
-            grid_size = float(request.args.get('gridSize', 0.01))
+            eps = 0.0002  # Fixed eps
+            min_points = 16  # Fixed min_points
+            grid_size = 0.1  # Larger grid size
             
             # Normalize coordinates
             lon1, lat1, lon2, lat2 = normalize_bbox(lon1, lat1, lon2, lat2)
@@ -169,12 +183,6 @@ def cache_clusters():
                 raise ValueError("Longitude must be between -180 and 180")
             if not (-90 <= lat1 <= 90 and -90 <= lat2 <= 90):
                 raise ValueError("Latitude must be between -90 and 90")
-            if eps <= 0:
-                raise ValueError("eps must be positive")
-            if min_points < 2:
-                raise ValueError("minPoints must be at least 2")
-            if grid_size <= 0:
-                raise ValueError("gridSize must be positive")
                 
         except ValueError as e:
             return jsonify({'error': str(e)}), 400
@@ -182,7 +190,7 @@ def cache_clusters():
         logging.info(f"Cache Clusters called with: lon1={lon1}, lat1={lat1}, lon2={lon2}, lat2={lat2}, eps={eps}, minPoints={min_points}, gridSize={grid_size}")
 
         # 1. Check cache first
-        cached_clusters = get_clusters_from_cache(lon1, lat1, lon2, lat2, grid_size, eps, min_points)
+        cached_clusters = get_clusters_from_cache(lon1, lat1, lon2, lat2, eps, min_points)
         if cached_clusters:
             logging.info("Returning cached clusters.")
             return jsonify({'count': len(cached_clusters), 'clusters': cached_clusters, 'source': 'cache'})
@@ -198,11 +206,14 @@ def cache_clusters():
         """, (lon1, lat1, lon2, lat2, eps, min_points, grid_size))
         
         saved_clusters = cur.fetchall()
-        if saved_clusters:
+        if saved_clusters and saved_clusters[0].get('clusters'):
             logging.info("Found clusters in saved_clusters table.")
+            clusters_data = saved_clusters[0]['clusters']
+            if isinstance(clusters_data, str):
+                clusters_data = json.loads(clusters_data)
             # Add to cache before returning
-            add_clusters_to_cache(lon1, lat1, lon2, lat2, grid_size, eps, min_points, saved_clusters)
-            return jsonify({'count': len(saved_clusters), 'clusters': saved_clusters, 'source': 'saved_clusters'})
+            add_clusters_to_cache(lon1, lat1, lon2, lat2, eps, min_points, clusters_data)
+            return jsonify({'count': len(clusters_data), 'clusters': clusters_data, 'source': 'saved_clusters'})
 
         # 3. Perform clustering from database
         logging.info("Performing new clustering...")
@@ -259,7 +270,7 @@ def cache_clusters():
             conn.commit()
             
             # Add to cache
-            add_clusters_to_cache(lon1, lat1, lon2, lat2, grid_size, eps, min_points, results)
+            add_clusters_to_cache(lon1, lat1, lon2, lat2, eps, min_points, results)
 
         logging.info(f"Query returned {len(results)} clusters across {len(set((r['grid_x'], r['grid_y']) for r in results))} grid cells.")
 

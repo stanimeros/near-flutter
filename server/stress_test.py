@@ -57,7 +57,7 @@ async def stress_test(requests=100, concurrency=10):
 
     for _ in range(requests):
         min_lon, min_lat, max_lon, max_lat = random_coords()
-        urls.append(f"{BASE_URL}cache_clusters?lon1={min_lon}&lat1={min_lat}&lon2={max_lon}&lat2={max_lat}&eps=0.0001&minPoints=3")
+        urls.append(f"{BASE_URL}cache_clusters?lon1={min_lon}&lat1={min_lat}&lon2={max_lon}&lat2={max_lat}")
 
     print(f"\nStarting stress test with {len(urls)} requests and concurrency={concurrency}...")
 
