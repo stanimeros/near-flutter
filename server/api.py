@@ -10,6 +10,7 @@ from flask_caching import Cache # type: ignore
 from psycopg2.extras import RealDictCursor # type: ignore
 from gevent.pywsgi import WSGIServer # type: ignore
 from psycopg2.pool import ThreadedConnectionPool  #type: ignore
+from math import floor
 
 app = Flask(__name__)
 app.config['DEBUG'] = True
@@ -76,30 +77,94 @@ def get_points_in_bbox():
         if conn:
             return_db_connection(conn)  # Return connection to pool
 
+def round_coord(coord, precision=4):
+    """Round coordinates to reduce variations"""
+    return round(coord, precision)
+
+def normalize_bbox(lon1, lat1, lon2, lat2, precision=4):
+    """Normalize bbox coordinates to increase cache hits"""
+    # Round coordinates
+    lon1 = round_coord(lon1, precision)
+    lat1 = round_coord(lat1, precision)
+    lon2 = round_coord(lon2, precision)
+    lat2 = round_coord(lat2, precision)
+    
+    # Ensure correct order (min to max)
+    min_lon = min(lon1, lon2)
+    max_lon = max(lon1, lon2)
+    min_lat = min(lat1, lat2)
+    max_lat = max(lat1, lat2)
+    
+    return min_lon, min_lat, max_lon, max_lat
+
+def get_grid_key(lon, lat, grid_size=0.01):
+    """Get grid cell key for a coordinate"""
+    return (floor(lon/grid_size), floor(lat/grid_size))
+
 def get_clusters_from_cache(lon1, lat1, lon2, lat2, grid_size, eps, min_points):
-    cache_key = f"clusters:{lon1}:{lat1}:{lon2}:{lat2}:{grid_size}:{eps}:{min_points}"
+    """Modified cache function with grid-based lookup"""
+    # Normalize coordinates
+    lon1, lat1, lon2, lat2 = normalize_bbox(lon1, lat1, lon2, lat2)
+    
+    # Get grid cells for corners
+    grid_key1 = get_grid_key(lon1, lat1, grid_size)
+    grid_key2 = get_grid_key(lon2, lat2, grid_size)
+    
+    # Create cache key with grid cells instead of exact coordinates
+    cache_key = f"clusters:grid_{grid_key1}_{grid_key2}:eps_{eps}:min_{min_points}"
+    
     cached_data = cache.get(cache_key)
-    return cached_data if cached_data else None
+    if cached_data:
+        # Check if cached bbox contains requested bbox
+        cached_bbox = cached_data.get('bbox', {})
+        if (cached_bbox.get('min_lon', float('inf')) <= lon1 and
+            cached_bbox.get('min_lat', float('inf')) <= lat1 and
+            cached_bbox.get('max_lon', float('-inf')) >= lon2 and
+            cached_bbox.get('max_lat', float('-inf')) >= lat2):
+            return cached_data['clusters']
+    return None
 
 def add_clusters_to_cache(lon1, lat1, lon2, lat2, grid_size, eps, min_points, clusters):
-    cache_key = f"clusters:{lon1}:{lat1}:{lon2}:{lat2}:{grid_size}:{eps}:{min_points}"
-    cache.set(cache_key, clusters, timeout=3600)  # Cache for 1 hour
+    """Modified cache storage with grid-based keys"""
+    # Normalize coordinates
+    lon1, lat1, lon2, lat2 = normalize_bbox(lon1, lat1, lon2, lat2)
+    
+    # Get grid cells
+    grid_key1 = get_grid_key(lon1, lat1, grid_size)
+    grid_key2 = get_grid_key(lon2, lat2, grid_size)
+    
+    cache_key = f"clusters:grid_{grid_key1}_{grid_key2}:eps_{eps}:min_{min_points}"
+    
+    cache_data = {
+        'bbox': {
+            'min_lon': lon1,
+            'min_lat': lat1,
+            'max_lon': lon2,
+            'max_lat': lat2
+        },
+        'clusters': clusters
+    }
+    
+    cache.set(cache_key, cache_data, timeout=3600)  # Cache for 1 hour
 
 @app.route('/api/cache_clusters', methods=['GET'])
 def cache_clusters():
     conn = None
     try:
-        # Validate parameters
+        # Get and validate parameters
         try:
             lon1 = float(request.args.get('lon1'))
             lat1 = float(request.args.get('lat1'))
             lon2 = float(request.args.get('lon2'))
             lat2 = float(request.args.get('lat2'))
-            eps = float(request.args.get('eps', 0.00025))
+            eps = round(float(request.args.get('eps', 0.00025)), 5)  # Round eps
             min_points = int(request.args.get('minPoints', 2))
             grid_size = float(request.args.get('gridSize', 0.01))
             
-            # Basic validation
+            # Normalize coordinates
+            lon1, lat1, lon2, lat2 = normalize_bbox(lon1, lat1, lon2, lat2)
+            
+            # Rest of the validation...
             if not (-180 <= lon1 <= 180 and -180 <= lon2 <= 180):
                 raise ValueError("Longitude must be between -180 and 180")
             if not (-90 <= lat1 <= 90 and -90 <= lat2 <= 90):
