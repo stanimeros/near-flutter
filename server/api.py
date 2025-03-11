@@ -76,32 +76,48 @@ def get_points_in_bbox():
         if conn:
             return_db_connection(conn)  # Return connection to pool
 
-def get_clusters_from_cache(lon1, lat1, lon2, lat2, grid_size):
-    cache_key = f"clusters:{lon1}:{lat1}:{lon2}:{lat2}:{grid_size}"
+def get_clusters_from_cache(lon1, lat1, lon2, lat2, grid_size, eps, min_points):
+    cache_key = f"clusters:{lon1}:{lat1}:{lon2}:{lat2}:{grid_size}:{eps}:{min_points}"
     cached_data = cache.get(cache_key)
     return cached_data if cached_data else None
 
-def add_clusters_to_cache(lon1, lat1, lon2, lat2, grid_size, clusters):
-    cache_key = f"clusters:{lon1}:{lat1}:{lon2}:{lat2}:{grid_size}"
+def add_clusters_to_cache(lon1, lat1, lon2, lat2, grid_size, eps, min_points, clusters):
+    cache_key = f"clusters:{lon1}:{lat1}:{lon2}:{lat2}:{grid_size}:{eps}:{min_points}"
     cache.set(cache_key, clusters, timeout=3600)  # Cache for 1 hour
 
 @app.route('/api/cache_clusters', methods=['GET'])
 def cache_clusters():
     conn = None
     try:
-        # Get parameters
-        lon1 = float(request.args.get('lon1'))
-        lat1 = float(request.args.get('lat1'))
-        lon2 = float(request.args.get('lon2'))
-        lat2 = float(request.args.get('lat2'))
-        eps = float(request.args.get('eps', 0.00025))
-        min_points = int(request.args.get('minPoints', 2))
-        grid_size = float(request.args.get('gridSize', 0.01))
+        # Validate parameters
+        try:
+            lon1 = float(request.args.get('lon1'))
+            lat1 = float(request.args.get('lat1'))
+            lon2 = float(request.args.get('lon2'))
+            lat2 = float(request.args.get('lat2'))
+            eps = float(request.args.get('eps', 0.00025))
+            min_points = int(request.args.get('minPoints', 2))
+            grid_size = float(request.args.get('gridSize', 0.01))
+            
+            # Basic validation
+            if not (-180 <= lon1 <= 180 and -180 <= lon2 <= 180):
+                raise ValueError("Longitude must be between -180 and 180")
+            if not (-90 <= lat1 <= 90 and -90 <= lat2 <= 90):
+                raise ValueError("Latitude must be between -90 and 90")
+            if eps <= 0:
+                raise ValueError("eps must be positive")
+            if min_points < 2:
+                raise ValueError("minPoints must be at least 2")
+            if grid_size <= 0:
+                raise ValueError("gridSize must be positive")
+                
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
 
         logging.info(f"Cache Clusters called with: lon1={lon1}, lat1={lat1}, lon2={lon2}, lat2={lat2}, eps={eps}, minPoints={min_points}, gridSize={grid_size}")
 
         # 1. Check cache first
-        cached_clusters = get_clusters_from_cache(lon1, lat1, lon2, lat2, grid_size)
+        cached_clusters = get_clusters_from_cache(lon1, lat1, lon2, lat2, grid_size, eps, min_points)
         if cached_clusters:
             logging.info("Returning cached clusters.")
             return jsonify({'count': len(cached_clusters), 'clusters': cached_clusters, 'source': 'cache'})
@@ -120,7 +136,7 @@ def cache_clusters():
         if saved_clusters:
             logging.info("Found clusters in saved_clusters table.")
             # Add to cache before returning
-            add_clusters_to_cache(lon1, lat1, lon2, lat2, grid_size, saved_clusters)
+            add_clusters_to_cache(lon1, lat1, lon2, lat2, grid_size, eps, min_points, saved_clusters)
             return jsonify({'count': len(saved_clusters), 'clusters': saved_clusters, 'source': 'saved_clusters'})
 
         # 3. Perform clustering from database
@@ -178,7 +194,7 @@ def cache_clusters():
             conn.commit()
             
             # Add to cache
-            add_clusters_to_cache(lon1, lat1, lon2, lat2, grid_size, results)
+            add_clusters_to_cache(lon1, lat1, lon2, lat2, grid_size, eps, min_points, results)
 
         logging.info(f"Query returned {len(results)} clusters across {len(set((r['grid_x'], r['grid_y']) for r in results))} grid cells.")
 
