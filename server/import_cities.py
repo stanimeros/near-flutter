@@ -19,18 +19,23 @@ def to_wgs84(geometry):
     project = pyproj.Transformer.from_crs('EPSG:2100', 'EPSG:4326', always_xy=True)
     return transform(project.transform, geometry)
 
-def drop_and_create_table(conn):
+def drop_and_create_tables(conn):
     """Drop and create necessary tables if they don't exist."""
     try:
         cur = conn.cursor()
 
-        # Drop existing table
-        cur.execute("DROP TABLE IF EXISTS cities")
+        # Drop poi_clusters first since it depends on cities
+        print("Dropping poi_clusters table...")
+        cur.execute("DROP TABLE IF EXISTS poi_clusters CASCADE")
+        
+        # Drop cities table
+        print("Dropping cities table...")
+        cur.execute("DROP TABLE IF EXISTS cities CASCADE")
         
         print("Creating cities table...")
         # Create cities table
         cur.execute("""
-        CREATE TABLE IF NOT EXISTS cities (
+        CREATE TABLE cities (
             id SERIAL PRIMARY KEY,
             name VARCHAR(255) UNIQUE,
             geom GEOMETRY(POLYGON, 4326)
@@ -39,7 +44,7 @@ def drop_and_create_table(conn):
         
         # Create spatial index
         cur.execute("""
-        CREATE INDEX IF NOT EXISTS cities_geom_idx ON cities USING GIST (geom);
+        CREATE INDEX cities_geom_idx ON cities USING GIST (geom);
         """)
         
         conn.commit()
@@ -90,7 +95,7 @@ def add_cities_to_db():
         conn = connect_db()
         
         # Create tables if they don't exist
-        drop_and_create_table(conn)
+        drop_and_create_tables(conn)
         
         # Insert each city into the database
         print("Starting city import...")
