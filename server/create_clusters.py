@@ -13,7 +13,7 @@ def connect_db():
     print("Connected to database")
     return conn
 
-def drop_and_create_tables(conn):
+def drop_and_create_table(conn):
     """Drop and recreate the poi_clusters table."""
     try:
         cur = conn.cursor()
@@ -92,9 +92,6 @@ def process_city(conn, city_id, city_name, city_geom_wkt):
         
         print(f"Found {point_count} points in {city_name}")
         
-        # Clear existing clusters for this city
-        cur.execute("DELETE FROM poi_clusters WHERE city_id = %s", (city_id,))
-        
         # Perform DBSCAN clustering
         print(f"Clustering {city_name}...")
         
@@ -155,8 +152,8 @@ def main():
     try:
         conn = connect_db()
         
-        # Always recreate the tables
-        drop_and_create_tables(conn)
+        # Always recreate the table
+        drop_and_create_table(conn)
         
         # Check database state
         check_database(conn)

@@ -19,23 +19,13 @@ def to_wgs84(geometry):
     project = pyproj.Transformer.from_crs('EPSG:2100', 'EPSG:4326', always_xy=True)
     return transform(project.transform, geometry)
 
-def truncate_cities(conn):
-    """Truncate the cities table."""
+def drop_and_create_table(conn):
+    """Drop and create necessary tables if they don't exist."""
     try:
         cur = conn.cursor()
-        print("Truncating cities table...")
-        cur.execute("TRUNCATE TABLE cities RESTART IDENTITY CASCADE")
-        conn.commit()
-        cur.close()
-        print("Cities table truncated")
-    except Exception as e:
-        print(f"Error truncating cities table: {e}")
-        conn.rollback()
 
-def create_tables(conn):
-    """Create necessary tables if they don't exist."""
-    try:
-        cur = conn.cursor()
+        # Drop existing table
+        cur.execute("DROP TABLE IF EXISTS cities")
         
         print("Creating cities table...")
         # Create cities table
@@ -99,11 +89,8 @@ def add_cities_to_db():
         # Establish DB connection
         conn = connect_db()
         
-        # Always truncate cities table
-        truncate_cities(conn)
-        
         # Create tables if they don't exist
-        create_tables(conn)
+        drop_and_create_table(conn)
         
         # Insert each city into the database
         print("Starting city import...")
@@ -118,8 +105,8 @@ def add_cities_to_db():
                 insert_city(conn, city_name, city_geometry)
                 processed_count += 1
                 
-                # Show progress every 50 cities
-                if processed_count % 50 == 0:
+                # Show progress every 10 cities
+                if processed_count % 10 == 0:
                     print(f"Progress: {processed_count}/{len(cities_gdf)} cities processed")
             else:
                 skipped_count += 1
