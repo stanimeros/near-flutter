@@ -8,24 +8,20 @@ class MeetingConfirmationSheet extends StatefulWidget {
   final Point point;
   final Meeting? currentMeeting;
   final String currentUserId;
-  final bool isNewSuggestion;
-  final bool isCounterProposal;
-  final VoidCallback? onCancel;
   final VoidCallback? onReject;
   final VoidCallback? onAccept;
   final Function(DateTime)? onConfirm;
+  final bool viewOnly;
 
   const MeetingConfirmationSheet({
     super.key,
     required this.point,
     this.currentMeeting,
     required this.currentUserId,
-    required this.isNewSuggestion,
-    this.isCounterProposal = false,
-    this.onCancel,
     this.onReject,
     this.onAccept,
     this.onConfirm,
+    this.viewOnly = false,
   });
 
   @override
@@ -36,10 +32,20 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
   DateTime selectedDateTime = DateTime.now().add(const Duration(days: 1));
 
   @override
+  void initState() {
+    super.initState();
+    // Initialize with current meeting datetime if updating an existing meeting
+    if (widget.currentMeeting != null) {
+      selectedDateTime = widget.currentMeeting!.datetime;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (!widget.isNewSuggestion && widget.currentMeeting != null) {
+    // If we have a current meeting and we're not creating/updating
+    if (widget.currentMeeting != null && widget.viewOnly) {
       final bool isPast = _isMeetingPast(widget.currentMeeting!.datetime);
-      final bool canInteract = widget.currentMeeting!.status == MeetingStatus.pending && !isPast;
+      final bool canInteract = widget.currentMeeting!.status == MeetingStatus.suggested && !isPast;
 
       return Container(
         width: double.infinity,
@@ -106,11 +112,6 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 8),
-            if (widget.isNewSuggestion || widget.isCounterProposal)
-              ElevatedButton(
-                onPressed: () => _showDateTimePicker(context),
-                child: const Text('Change Date & Time'),
-              ),
             if (isPast)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
@@ -127,15 +128,6 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  if (widget.onCancel != null)
-                    ElevatedButton.icon(
-                      onPressed: widget.onCancel,
-                      icon: const Icon(LucideIcons.x, color: Colors.red),
-                      label: const Text('Cancel'),
-                      style: ElevatedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                      ),
-                    ),
                   if (widget.onReject != null)
                     ElevatedButton.icon(
                       onPressed: widget.onReject,
@@ -161,6 +153,9 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
       );
     }
 
+    // For creating a new meeting or updating an existing one
+    final bool isUpdating = widget.currentMeeting != null;
+    
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
@@ -182,7 +177,7 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
             ),
           ),
           Text(
-            widget.isCounterProposal ? 'Counter-proposal?' : 'Create meeting here?',
+            isUpdating ? 'Update meeting location?' : 'Create meeting here?',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 24),
@@ -191,11 +186,10 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
             style: Theme.of(context).textTheme.bodyLarge,
           ),
           const SizedBox(height: 8),
-          if (widget.isNewSuggestion || widget.isCounterProposal)
-            ElevatedButton(
-              onPressed: () => _showDateTimePicker(context),
-              child: const Text('Change Date & Time'),
-            ),
+          ElevatedButton(
+            onPressed: () => _showDateTimePicker(context),
+            child: const Text('Change Date & Time'),
+          ),
           const SizedBox(height: 24),
           ActionSlider.standard(
             width: MediaQuery.of(context).size.width - 48,
@@ -221,7 +215,7 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
                 widget.onConfirm!(selectedDateTime);
               }
             },
-            child: Text(widget.isCounterProposal ? 'Slide to counter-propose' : 'Slide to create'),
+            child: Text(isUpdating ? 'Slide to update location' : 'Slide to create'),
           ),
         ],
       ),

@@ -403,44 +403,6 @@ def reject_meeting(token):
         if conn:
             return_db_connection(conn)
 
-@app.route('/api/meetings/<token>/cancel', methods=['POST'])
-def cancel_meeting(token):
-    conn = None
-    try:
-        # Get connection from pool
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # Check if meeting exists
-        cur.execute("SELECT * FROM meetings WHERE token = %s", (token,))
-        meeting = cur.fetchone()
-        
-        if not meeting:
-            return jsonify({'error': 'Meeting not found'}), 404
-        
-        # Update meeting status
-        cur.execute("""
-            UPDATE meetings 
-            SET status = %s, updated_at = NOW()
-            WHERE token = %s
-            RETURNING id, token, status, location_lon, location_lat, created_at, updated_at
-        """, ('cancelled', token))
-        
-        updated_meeting = cur.fetchone()
-        conn.commit()
-        cur.close()
-        
-        return jsonify({
-            'success': True,
-            'meeting': updated_meeting
-        })
-    except Exception as e:
-        logging.error(f"Error cancelling meeting: {str(e)}")
-        return jsonify({'error': str(e)}), 400
-    finally:
-        if conn:
-            return_db_connection(conn)
-
 @app.route('/api/meetings/<token>', methods=['GET'])
 def get_meeting(token):
     conn = None

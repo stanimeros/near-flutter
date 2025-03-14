@@ -11,6 +11,7 @@ import 'package:flutter_near/models/near_user.dart';
 import 'package:flutter_near/services/spatial_db.dart';
 import 'package:flutter_near/widgets/meeting_confirmation_sheet.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:flutter_near/services/firestore.dart';
 
 class MapPage extends StatefulWidget {
   final NearUser? friend;
@@ -55,11 +56,11 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       _suggestedMeeting = widget.suggestedMeeting;
       initialPosition = LatLng(
         widget.suggestedMeeting!.location.latitude,
-        widget.suggestedMeeting!.location.longitude
+        widget.suggestedMeeting!.location.longitude 
       );
       
-      // Show POIs only if meeting is pending
-      _shouldShowPOIs = widget.suggestedMeeting!.status == MeetingStatus.pending;
+      // Show POIs only if meeting is suggested
+      _shouldShowPOIs = widget.suggestedMeeting!.status == MeetingStatus.suggested;
 
       // Add the meeting marker
       _markers = {};
@@ -274,11 +275,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     if (isCurrentMeetingPoint && _suggestedMeeting != null) {
       double hue;
       switch (_suggestedMeeting!.status) {
-        case MeetingStatus.pending:
+        case MeetingStatus.suggested:
           hue = BitmapDescriptor.hueOrange;
-          break;
-        case MeetingStatus.cancelled:
-          hue = BitmapDescriptor.hueRed;
           break;
         case MeetingStatus.accepted:
           hue = BitmapDescriptor.hueGreen;
@@ -321,40 +319,36 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
     // If there's no meeting yet, allow creating new meeting
     if (_suggestedMeeting == null) {
-      _showMeetingSheet(point, isNewSuggestion: true);
+      _showMeetingSheet(point);
       return;
     }
 
     // If this is not the current meeting point
     if (!isCurrentPoint) {
-      // Allow counter-proposal if meeting is pending
-      if (_suggestedMeeting!.status == MeetingStatus.pending) {
-        _showMeetingSheet(
-          point, 
-          isNewSuggestion: true,
-          isCounterProposal: true
-        );
+      // Allow suggesting a new location if meeting is pending
+      if (_suggestedMeeting!.status == MeetingStatus.suggested) {
+        _showMeetingSheet(point, currentMeeting: _suggestedMeeting);
       }
       return;
     }
 
     if (isCurrentPoint) {
       // For the current meeting point
-      if (_suggestedMeeting!.status == MeetingStatus.pending) {
-        // Show options to accept, reject, or cancel
+      if (_suggestedMeeting!.status == MeetingStatus.suggested) {
+        // Show options to accept or reject
         _showMeetingSheet(
           point, 
-          isNewSuggestion: false,
-          allowCancel: true,
+          currentMeeting: _suggestedMeeting,
           allowReject: true,
-          allowAccept: true
+          allowAccept: true,
+          viewOnly: true
         );
         return;
       } else {
         // For other statuses, just show info
         _showMeetingSheet(
           point, 
-          isNewSuggestion: false,
+          currentMeeting: _suggestedMeeting,
           viewOnly: true
         );
         return;
@@ -363,12 +357,10 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   }
 
   void _showMeetingSheet(Point point, {
-    bool isNewSuggestion = false,
-    bool allowCancel = false,
+    Meeting? currentMeeting,
     bool allowReject = false,
     bool allowAccept = false,
     bool viewOnly = false,
-    bool isCounterProposal = false,
   }) {
     final MeetingService meetingService = MeetingService();
     
@@ -378,34 +370,9 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       backgroundColor: Colors.transparent,
       builder: (context) => MeetingConfirmationSheet(
         point: point,
-        currentMeeting: isNewSuggestion ? null : _suggestedMeeting,
+        currentMeeting: currentMeeting,
         currentUserId: widget.currentUser!.uid,
-        isNewSuggestion: isNewSuggestion,
-        isCounterProposal: isCounterProposal,
-        onCancel: allowCancel ? () async {
-          final success = await meetingService.cancelMeeting(_suggestedMeeting!.token);
-          
-          if (success) {
-            setState(() {
-              _suggestedMeeting!.status = MeetingStatus.cancelled;
-              _shouldShowPOIs = false;
-              
-              // Keep existing markers but update the current one's status
-              Point meetingPoint = Point(
-                _suggestedMeeting!.location.longitude,
-                _suggestedMeeting!.location.latitude
-              );
-              
-              // Update only the current marker
-              _markers.removeWhere((m) => m.markerId.value == 'meeting_${meetingPoint.lon}_${meetingPoint.lat}');
-              _markers.add(_createPOIMarker(meetingPoint, isCurrentSuggestion: true));
-            });
-          }
-
-          if (context.mounted) {
-            Navigator.pop(context);
-          }
-        } : null,
+        viewOnly: viewOnly,
         onReject: allowReject ? () async {
           final success = await meetingService.rejectMeeting(_suggestedMeeting!.token);
           
@@ -455,10 +422,10 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
           }
         } : null,
         onConfirm: !viewOnly ? (selectedTime) async {
-          if (isCounterProposal) {
-            // Create a counter-proposal
-            final updatedMeeting = await meetingService.resuggestMeeting(
-              _suggestedMeeting!.token,
+          if (currentMeeting != null) {
+            // Update existing meeting with a new suggestion
+            final updatedMeeting = await meetingService.suggestMeeting(
+              currentMeeting.token,
               point.lon,
               point.lat,
               selectedTime
@@ -488,6 +455,13 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               );
               
               if (suggestedMeeting != null) {
+                // Save the meeting in Firestore to enable real-time updates
+                await FirestoreService().createMeeting(
+                  suggestedMeeting.token,
+                  widget.currentUser!.uid,
+                  widget.friend!.uid
+                );
+                
                 setState(() {
                   _suggestedMeeting = suggestedMeeting;
                   _shouldShowPOIs = false;

@@ -250,7 +250,7 @@ class FirestoreService {
     }
   }
 
-  Future<void> setMeeting(String token, String uid, String fuid) async {
+  Future<void> createMeeting(String token, String uid, String fuid) async {
     try{
       DocumentReference meetingDocRef = firestore.collection('meetings').doc(token);
       await meetingDocRef.set({
@@ -262,13 +262,24 @@ class FirestoreService {
     }
   }
 
-  Future <List<String>> getMeetingTokens(String uid, String fuid) async {
-    try{
-      QuerySnapshot meetingsSnapshot = await firestore.collection('meetings').where('uids', arrayContains: uid).where('uids', arrayContains: fuid).get();
-      return meetingsSnapshot.docs.map((doc) => doc['token'] as String).toList();
-    }catch(e){
+  Stream<List<String>> getMeetingTokens(String uid, String fuid) {
+    try {
+      // Create a stream from the meetings collection
+      return firestore
+        .collection('meetings')
+        .where('uids', arrayContains: uid)
+        .snapshots()
+        .map((snapshot) {
+          // Filter the results to only include meetings that also contain the friend's ID
+          return snapshot.docs
+            .where((doc) => (doc['uids'] as List).contains(fuid))
+            .map((doc) => doc['token'] as String)
+            .toList();
+        });
+    } catch (e) {
       debugPrint('Error getMeetingTokens: $e');
+      // Return an empty stream in case of error
+      return Stream.value([]);
     }
-    return [];
   }
 }

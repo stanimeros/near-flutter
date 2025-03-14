@@ -24,7 +24,7 @@ class MeetingService {
             location: const GeoPoint(0, 0), // Will be set when suggesting location
             updatedAt: DateTime.parse(meetingData['updated_at']),
             createdAt: DateTime.parse(meetingData['created_at']),
-            status: MeetingStatus.pending,
+            status: MeetingStatus.suggested,
           );
         }
       }
@@ -44,6 +44,7 @@ class MeetingService {
         body: jsonEncode({
           'longitude': longitude,
           'latitude': latitude,
+          'datetime': time.toIso8601String(),
         }),
       );
       
@@ -51,44 +52,12 @@ class MeetingService {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
           final meetingData = data['meeting'];
-          final meeting = Meeting.fromApi(meetingData);
-          // Update the time since the API doesn't store it
-          meeting.datetime = time;
-          return meeting;
+          return Meeting.fromApi(meetingData);
         }
       }
       return null;
     } catch (e) {
       debugPrint('Error suggesting meeting: $e');
-      return null;
-    }
-  }
-  
-  // Re-suggest a meeting location (counter-proposal)
-  Future<Meeting?> resuggestMeeting(String token, double longitude, double latitude, DateTime time) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/meetings/$token/resuggest'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'longitude': longitude,
-          'latitude': latitude,
-        }),
-      );
-      
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true) {
-          final meetingData = data['meeting'];
-          final meeting = Meeting.fromApi(meetingData);
-          // Update the time since the API doesn't store it
-          meeting.datetime = time;
-          return meeting;
-        }
-      }
-      return null;
-    } catch (e) {
-      debugPrint('Error re-suggesting meeting: $e');
       return null;
     }
   }
@@ -125,24 +94,6 @@ class MeetingService {
       return false;
     } catch (e) {
       debugPrint('Error rejecting meeting: $e');
-      return false;
-    }
-  }
-  
-  // Cancel a meeting
-  Future<bool> cancelMeeting(String token) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/meetings/$token/cancel'),
-      );
-      
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['success'] == true;
-      }
-      return false;
-    } catch (e) {
-      debugPrint('Error cancelling meeting: $e');
       return false;
     }
   }

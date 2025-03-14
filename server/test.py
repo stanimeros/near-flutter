@@ -5,6 +5,7 @@ import random
 import time
 import uuid
 from pprint import pprint
+from datetime import datetime
 
 # Base URL for the API
 BASE_URL = "https://snf-78417.ok-kno.grnetcloud.net/api"
@@ -76,6 +77,33 @@ def test_points_api():
     
     return response.status_code == 200
 
+# Test the /api/cities endpoint
+def test_cities_api():
+    print("\n=== Testing /api/cities endpoint ===")
+    
+    # Generate random bounding box
+    bbox = random_bbox_near_thessaloniki()
+    print(f"Using bounding box: {bbox}")
+    
+    # Make the request
+    response = requests.get(
+        f"{BASE_URL}/cities",
+        params=bbox,
+    )
+    
+    # Print results
+    print(f"Status code: {response.status_code}")
+    if response.status_code == 200:
+        data = response.json()
+        print(f"Found {data['count']} cities")
+        if data['count'] > 0:
+            print(f"Cities found: {[city['name'] for city in data['cities']]}")
+            print("Sample city geometry type:", json.loads(data['cities'][0]['geometry'])['type'])
+    else:
+        print("Error:", response.text)
+    
+    return response.status_code == 200
+
 # Test the /api/clusters endpoint
 def test_clusters_api():
     print("\n=== Testing /api/clusters endpoint ===")
@@ -133,6 +161,8 @@ def test_meetings_api():
     # Step 2: Suggest a location
     print("\n--- Suggesting a location ---")
     location = random_location_near_thessaloniki()
+    # Add datetime to the location
+    location["datetime"] = datetime.now().isoformat()
     print(f"Suggesting location: {location}")
     
     response = requests.post(
@@ -160,21 +190,23 @@ def test_meetings_api():
     print("Meeting details retrieved successfully")
     pprint(response.json()['meeting'])
     
-    # Step 4: Re-suggest a location
-    print("\n--- Re-suggesting a location ---")
+    # Step 4: Update the location (using suggest again)
+    print("\n--- Updating the location ---")
     new_location = random_location_near_thessaloniki()
-    print(f"Re-suggesting location: {new_location}")
+    # Add datetime to the location
+    new_location["datetime"] = datetime.now().isoformat()
+    print(f"New location: {new_location}")
     
     response = requests.post(
-        f"{BASE_URL}/meetings/{token}/resuggest",
+        f"{BASE_URL}/meetings/{token}/suggest",
         json=new_location,
     )
     
     if response.status_code != 200:
-        print(f"Failed to re-suggest location: {response.text}")
+        print(f"Failed to update location: {response.text}")
         return False
     
-    print("Location re-suggested successfully")
+    print("Location updated successfully")
     pprint(response.json()['meeting'])
     
     # Step 5: Accept the meeting
@@ -203,20 +235,7 @@ def test_meetings_api():
     print("Meeting rejected successfully")
     pprint(response.json()['meeting'])
     
-    # Step 7: Cancel the meeting
-    print("\n--- Cancelling the meeting ---")
-    response = requests.post(
-        f"{BASE_URL}/meetings/{token}/cancel",
-    )
-    
-    if response.status_code != 200:
-        print(f"Failed to cancel meeting: {response.text}")
-        return False
-    
-    print("Meeting cancelled successfully")
-    pprint(response.json()['meeting'])
-    
-    # Step 8: Test with invalid token
+    # Step 7: Test with invalid token
     print("\n--- Testing with invalid token ---")
     invalid_token = str(uuid.uuid4())
     response = requests.get(
@@ -281,6 +300,7 @@ def main():
     
     # Run all tests
     points_success = test_points_api()
+    cities_success = test_cities_api()
     clusters_success = test_clusters_api()
     meetings_success = test_meetings_api()
     error_handling_success = test_error_handling()
@@ -288,12 +308,13 @@ def main():
     # Print summary
     print("\n=== Test Summary ===")
     print(f"Points API: {'SUCCESS' if points_success else 'FAILED'}")
+    print(f"Cities API: {'SUCCESS' if cities_success else 'FAILED'}")
     print(f"Clusters API: {'SUCCESS' if clusters_success else 'FAILED'}")
     print(f"Meetings API: {'SUCCESS' if meetings_success else 'FAILED'}")
     print(f"Error Handling: {'SUCCESS' if error_handling_success else 'FAILED'}")
     
     # Overall result
-    if all([points_success, clusters_success, meetings_success, error_handling_success]):
+    if all([points_success, cities_success, clusters_success, meetings_success, error_handling_success]):
         print("\nAll tests PASSED!")
     else:
         print("\nSome tests FAILED!")
