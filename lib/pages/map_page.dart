@@ -40,7 +40,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
   Set<Marker> _markers = {};
   Set<Polygon> _cityPolygons = {}; // Add this to store city polygons
-  bool _shouldShowPOIs = true;  // Add this to control POI visibility
   
   bool _zoomChanged = false;
   double _lastZoomLevel = 0;  // Add this as a class field
@@ -58,9 +57,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         widget.suggestedMeeting!.location.latitude,
         widget.suggestedMeeting!.location.longitude 
       );
-      
-      // Show POIs only if meeting is suggested
-      _shouldShowPOIs = widget.suggestedMeeting!.status == MeetingStatus.suggested;
 
       // Add the meeting marker
       _markers = {};
@@ -71,9 +67,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         widget.suggestedMeeting!.location.latitude
       );
       _markers.add(_createPOIMarker(meetingPoint, isCurrentSuggestion: true));
-    } else {
-      // If no meeting exists, show POIs for creating new meeting
-      _shouldShowPOIs = true;
     }
     
     _initializeMap();
@@ -226,7 +219,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   }
 
   Future<void> _loadPOIsInViewport() async {
-    if (_mapController == null || !_shouldShowPOIs) return;
+    if (_mapController == null) return;
 
     // Keep existing meeting markers
     Set<Marker> meetingMarkers = _markers.where((marker) {
@@ -236,25 +229,22 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     // Clear other markers
     _markers = meetingMarkers;
 
-    // Only show polygons and load cells if we're showing POIs
-    if (_shouldShowPOIs) {
-      // First try with the actual user and friend points
-      List<Point> points = await SpatialDb().getClustersBetweenTwoPoints(
-        widget.currentUser!.getPoint(), 
-        widget.friend!.getPoint(),
-        httpClient: httpClient
-      );
+    // First try with the actual user and friend points
+    List<Point> points = await SpatialDb().getClustersBetweenTwoPoints(
+      widget.currentUser!.getPoint(), 
+      widget.friend!.getPoint(),
+      httpClient: httpClient
+    );
 
-      // Print clusters for debugging
-      debugPrint('Loaded ${points.length} clusters between ${widget.currentUser!.username} and ${widget.friend!.username}');
-      
-      if (points.isNotEmpty) {
-        debugPrint('Sample cluster: (${points[0].lon}, ${points[0].lat})');
-      }
+    // Print clusters for debugging
+    debugPrint('Loaded ${points.length} clusters between ${widget.currentUser!.username} and ${widget.friend!.username}');
+    
+    if (points.isNotEmpty) {
+      debugPrint('Sample cluster: (${points[0].lon}, ${points[0].lat})');
+    }
 
-      for (var point in points) {
-        _markers.add(_createPOIMarker(point));
-      }
+    for (var point in points) {
+      _markers.add(_createPOIMarker(point));
     }
 
     // Add marker for current meeting location
@@ -395,8 +385,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
           
           if (success) {
             setState(() {
-              _shouldShowPOIs = false;
-              
               // Update the marker with rejected status
               Point meetingPoint = Point(
                 _suggestedMeeting!.location.longitude,
@@ -406,10 +394,11 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               // Update only the current marker
               _markers.removeWhere((m) => m.markerId.value == 'meeting_${meetingPoint.lon}_${meetingPoint.lat}');
               _markers.add(_createPOIMarker(meetingPoint, isCurrentSuggestion: true));
+              
+              // Reload POIs to show clusters
+              _loadPOIsInViewport();
             });
           }
-          
-          // Don't pop the navigation - let the user close the sheet when ready
         } : null,
         onAccept: allowAccept ? () async {
           final success = await meetingService.acceptMeeting(
@@ -419,8 +408,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
           
           if (success) {
             setState(() {
-              _shouldShowPOIs = false;
-              
               // Update the marker with accepted status
               Point meetingPoint = Point(
                 _suggestedMeeting!.location.longitude,
@@ -430,10 +417,11 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               // Update only the current marker
               _markers.removeWhere((m) => m.markerId.value == 'meeting_${meetingPoint.lon}_${meetingPoint.lat}');
               _markers.add(_createPOIMarker(meetingPoint, isCurrentSuggestion: true));
+              
+              // Reload POIs to show clusters
+              _loadPOIsInViewport();
             });
           }
-          
-          // Don't pop the navigation - let the user close the sheet when ready
         } : null,
         onConfirm: !viewOnly ? (selectedTime) async {
           if (currentMeeting != null) {
@@ -449,11 +437,13 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
             if (updatedMeeting != null) {
               setState(() {
                 _suggestedMeeting = updatedMeeting;
-                _shouldShowPOIs = false;
-                
-                // Update marker
-                _markers.clear();
+                // Update marker but don't clear all markers
+                _markers.removeWhere((m) => 
+                  m.markerId.value == 'meeting_${updatedMeeting.location.longitude}_${updatedMeeting.location.latitude}');
                 _markers.add(_createPOIMarker(point, isCurrentSuggestion: true));
+                
+                // Reload POIs to show clusters
+                _loadPOIsInViewport();
               });
             }
           } else {
@@ -473,16 +463,17 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               );
               
               setState(() {
-                _suggestedMeeting = suggestedMeeting;
-                _shouldShowPOIs = false;
-                
-                _markers.clear();
+                _suggestedMeeting = suggestedMeeting;                
+                // Update marker but don't clear all markers
+                _markers.removeWhere((m) => 
+                  m.markerId.value == 'meeting_${suggestedMeeting.location.longitude}_${suggestedMeeting.location.latitude}');
                 _markers.add(_createPOIMarker(point, isCurrentSuggestion: true));
+                
+                // Reload POIs to show clusters
+                _loadPOIsInViewport();
               });
             }
           }
-          
-          // Don't pop the navigation - let the user close the sheet when ready
         } : null,
       ),
     );
