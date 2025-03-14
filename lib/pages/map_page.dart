@@ -303,13 +303,13 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       double hue;
       switch (_suggestedMeeting!.status) {
         case MeetingStatus.suggested:
-          hue = BitmapDescriptor.hueOrange;
+          hue = BitmapDescriptor.hueBlue; // Blue for suggested
           break;
         case MeetingStatus.accepted:
-          hue = BitmapDescriptor.hueGreen;
+          hue = BitmapDescriptor.hueGreen; // Green for accepted
           break;
         case MeetingStatus.rejected:
-          hue = BitmapDescriptor.hueRed;
+          hue = BitmapDescriptor.hueRed; // Red for rejected
           break;
       }
       return Marker(
@@ -320,12 +320,11 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       );
     }
 
-    // We don't want to show previous meeting points, so skip the isPreviousPoint check
-    // and just return a regular POI marker
+    // Regular POI marker in light blue
     return Marker(
       markerId: MarkerId(markerId),
       position: LatLng(point.lat, point.lon),
-      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan), // Light blue for other POIs
       onTap: () => _onMarkerTapped(point),
     );
   }
@@ -460,11 +459,11 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
                 _markers.removeWhere((m) => 
                   m.markerId.value == 'meeting_${previousPoint.lon}_${previousPoint.lat}');
                 
-                // Add the previous point back as a normal cluster marker (green)
+                // Add the previous point back as a normal cluster marker (light blue)
                 _markers.add(Marker(
                   markerId: MarkerId('marker_${previousPoint.lon}_${previousPoint.lat}'),
                   position: LatLng(previousPoint.lat, previousPoint.lon),
-                  icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+                  icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan),
                   onTap: () => _onMarkerTapped(previousPoint),
                 ));
                 

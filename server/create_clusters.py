@@ -3,8 +3,8 @@ from psycopg2.extras import DictCursor # type: ignore
 import time
 
 # DBSCAN parameters - final working values
-EPS = 0.0005  # About 55 meters
-MIN_POINTS = 10
+EPS = 0.001
+MIN_POINTS = 4
 
 def connect_db():
     """Connect to the PostgreSQL database."""
