@@ -74,6 +74,56 @@ def get_points_in_bbox():
         if conn:
             return_db_connection(conn)  # Return connection to pool
 
+@app.route('/api/cities', methods=['GET'])
+def get_cities_in_bbox():
+    conn = None
+    try:
+        # Get parameters from query string
+        min_lon = float(request.args.get('minLon'))
+        min_lat = float(request.args.get('minLat'))
+        max_lon = float(request.args.get('maxLon'))
+        max_lat = float(request.args.get('maxLat'))
+        
+        # Validate coordinates
+        if not (-180 <= min_lon <= 180 and -90 <= min_lat <= 90 and 
+                -180 <= max_lon <= 180 and -90 <= max_lat <= 90):
+            return jsonify({'error': 'Invalid coordinates. Longitude must be between -180 and 180, latitude between -90 and 90.'}), 400
+        
+        # Get connection from pool
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Query cities that intersect with the bbox using the spatial index
+        cur.execute("""
+            SELECT 
+                id, 
+                name,
+                ST_AsGeoJSON(geom) as geometry
+            FROM cities
+            WHERE geom && ST_MakeEnvelope(%s, %s, %s, %s, 4326)
+            ORDER BY name
+        """, (min_lon, min_lat, max_lon, max_lat))
+        
+        cities = cur.fetchall()
+        cur.close()
+        
+        return jsonify({
+            'count': len(cities),
+            'bbox': {
+                'minLon': min_lon,
+                'minLat': min_lat,
+                'maxLon': max_lon,
+                'maxLat': max_lat
+            },
+            'cities': cities
+        })
+    except Exception as e:
+        logging.error(f"Error in get_cities_in_bbox: {str(e)}")
+        return jsonify({'error': str(e)}), 400
+    finally:
+        if conn:
+            return_db_connection(conn)  # Return connection to pool
+
 @app.route('/api/clusters', methods=['GET'])
 def get_clusters_for_locations():
     conn = None
