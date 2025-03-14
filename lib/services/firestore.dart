@@ -4,7 +4,6 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_near/models/near_user.dart';
-import 'package:flutter_near/models/meeting.dart';
 
 class FirestoreService {
   FirebaseFirestore firestore = FirebaseFirestore.instance;
@@ -251,35 +250,25 @@ class FirestoreService {
     }
   }
 
-  Stream<List<Meeting>> getMeetingsWithFriend(String currentUserId, String friendId) {
-    return FirebaseFirestore.instance
-      .collection('meetings')
-      .where(Filter.or(
-        Filter.and(
-          Filter('senderId', isEqualTo: currentUserId),
-          Filter('receiverId', isEqualTo: friendId),
-        ),
-        Filter.and(
-          Filter('senderId', isEqualTo: friendId),
-          Filter('receiverId', isEqualTo: currentUserId),
-        ),
-      ))
-      .orderBy('createdAt', descending: true)
-      .snapshots()
-      .map((snapshot) {
-        final meetings = snapshot.docs
-          .map((doc) {
-            return Meeting.fromFirestore(doc.id, doc.data());
-          })
-          .toList();
-        return meetings;
-      });
+  Future<void> setMeeting(String token, String uid, String fuid) async {
+    try{
+      DocumentReference meetingDocRef = firestore.collection('meetings').doc(token);
+      await meetingDocRef.set({
+        'token': token,
+        'uids': [uid, fuid],
+      }, SetOptions(merge: true));
+    }catch(e){
+      debugPrint('Error setMeeting: $e');
+    }
   }
 
-  Future<void> updateMeetingStatus(String meetingId, MeetingStatus newStatus) {
-    return firestore
-      .collection('meetings')
-      .doc(meetingId)
-      .update({'status': newStatus.name});
+  Future <List<String>> getMeetingTokens(String uid, String fuid) async {
+    try{
+      QuerySnapshot meetingsSnapshot = await firestore.collection('meetings').where('uids', arrayContains: uid).where('uids', arrayContains: fuid).get();
+      return meetingsSnapshot.docs.map((doc) => doc['token'] as String).toList();
+    }catch(e){
+      debugPrint('Error getMeetingTokens: $e');
+    }
+    return [];
   }
 }

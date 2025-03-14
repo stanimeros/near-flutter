@@ -10,6 +10,7 @@ from flask_caching import Cache # type: ignore
 from psycopg2.extras import RealDictCursor # type: ignore
 from gevent.pywsgi import WSGIServer # type: ignore
 from psycopg2.pool import ThreadedConnectionPool  #type: ignore
+from datetime import datetime
 
 app = Flask(__name__)
 app.config['DEBUG'] = True
@@ -279,6 +280,11 @@ def suggest_meeting(token):
         longitude = float(data['longitude'])
         latitude = float(data['latitude'])
         
+        # Get datetime if provided, otherwise use current time
+        meeting_datetime = data.get('datetime')
+        if not meeting_datetime:
+            meeting_datetime = datetime.now().isoformat()
+        
         # Validate coordinates
         if not (-180 <= longitude <= 180 and -90 <= latitude <= 90):
             return jsonify({'error': 'Invalid coordinates'}), 400
@@ -294,13 +300,13 @@ def suggest_meeting(token):
         if not meeting:
             return jsonify({'error': 'Meeting not found'}), 404
         
-        # Update meeting with suggested location and status
+        # Update meeting with suggested location, datetime and status
         cur.execute("""
             UPDATE meetings 
-            SET location_lon = %s, location_lat = %s, status = %s, updated_at = NOW()
+            SET location_lon = %s, location_lat = %s, datetime = %s, status = %s, updated_at = NOW()
             WHERE token = %s
-            RETURNING id, token, status, location_lon, location_lat, created_at, updated_at
-        """, (longitude, latitude, 'suggested', token))
+            RETURNING id, token, status, location_lon, location_lat, datetime, created_at, updated_at
+        """, (longitude, latitude, meeting_datetime, 'suggested', token))
         
         updated_meeting = cur.fetchone()
         conn.commit()
@@ -312,56 +318,6 @@ def suggest_meeting(token):
         })
     except Exception as e:
         logging.error(f"Error suggesting meeting: {str(e)}")
-        return jsonify({'error': str(e)}), 400
-    finally:
-        if conn:
-            return_db_connection(conn)
-
-@app.route('/api/meetings/<token>/resuggest', methods=['POST'])
-def resuggest_meeting(token):
-    conn = None
-    try:
-        # Get location from request
-        data = request.get_json()
-        if not data or 'longitude' not in data or 'latitude' not in data:
-            return jsonify({'error': 'Missing location data'}), 400
-        
-        longitude = float(data['longitude'])
-        latitude = float(data['latitude'])
-        
-        # Validate coordinates
-        if not (-180 <= longitude <= 180 and -90 <= latitude <= 90):
-            return jsonify({'error': 'Invalid coordinates'}), 400
-        
-        # Get connection from pool
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # Check if meeting exists
-        cur.execute("SELECT * FROM meetings WHERE token = %s", (token,))
-        meeting = cur.fetchone()
-        
-        if not meeting:
-            return jsonify({'error': 'Meeting not found'}), 404
-        
-        # Update meeting with new suggested location and status
-        cur.execute("""
-            UPDATE meetings 
-            SET location_lon = %s, location_lat = %s, status = %s, updated_at = NOW()
-            WHERE token = %s
-            RETURNING id, token, status, location_lon, location_lat, created_at, updated_at
-        """, (longitude, latitude, 'resuggested', token))
-        
-        updated_meeting = cur.fetchone()
-        conn.commit()
-        cur.close()
-        
-        return jsonify({
-            'success': True,
-            'meeting': updated_meeting
-        })
-    except Exception as e:
-        logging.error(f"Error resuggesting meeting: {str(e)}")
         return jsonify({'error': str(e)}), 400
     finally:
         if conn:

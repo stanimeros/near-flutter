@@ -2,54 +2,77 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 class Meeting {
-  final String id;
-  String senderId;
-  String receiverId;
-  DateTime time;
+  final String token;
+  DateTime datetime;
   GeoPoint location;
   MeetingStatus status;
-  List<GeoPoint> previousLocations;
+  DateTime updatedAt;
   final DateTime createdAt;
 
   Meeting({
-    required this.id,
-    required this.senderId,
-    required this.receiverId,
+    required this.token,
+    required this.datetime,
     required this.location,
-    required this.time,
+    required this.updatedAt,
     required this.createdAt,
     required this.status,
-    this.previousLocations = const [],
   });
 
-  factory Meeting.fromFirestore(String id, Map<String, dynamic> data) {
+  factory Meeting.fromApi(Map<String, dynamic> data) {
+    // Map API status to our MeetingStatus enum
+    MeetingStatus status;
+    switch (data['status']) {
+      case 'created':
+        status = MeetingStatus.pending;
+        break;
+      case 'suggested':
+        status = MeetingStatus.pending;
+        break;
+      case 'resuggested':
+        status = MeetingStatus.pending;
+        break;
+      case 'accepted':
+        status = MeetingStatus.accepted;
+        break;
+      case 'rejected':
+        status = MeetingStatus.rejected;
+        break;
+      case 'cancelled':
+        status = MeetingStatus.cancelled;
+        break;
+      default:
+        status = MeetingStatus.pending;
+    }
+    
     return Meeting(
-      id: id,
-      senderId: data['senderId'],
-      receiverId: data['receiverId'],
-      location: data['location'],
-      time: (data['time'] as Timestamp).toDate(),
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
-      status: MeetingStatus.values.firstWhere(
-        (e) => e.name == data['status'],
-        orElse: () => MeetingStatus.pending,
+      token: data['token'],
+      datetime: data['datetime'] != null 
+          ? DateTime.parse(data['datetime']) 
+          : DateTime.now(),
+      location: GeoPoint(
+        data['location_lat'] ?? 0, 
+        data['location_lon'] ?? 0
       ),
-      previousLocations: (data['previousLocations'] as List?)
-          ?.map((loc) => loc as GeoPoint)
-          .toList() ?? [],
+      updatedAt: data['updated_at'] != null 
+          ? DateTime.parse(data['updated_at']) 
+          : DateTime.parse(data['created_at']),
+      createdAt: DateTime.parse(data['created_at']),
+      status: status,
     );
   }
-
-  Map<String, dynamic> toFirestore() {
-    return {
-      'senderId': senderId,
-      'receiverId': receiverId,
-      'location': location,
-      'time': Timestamp.fromDate(time),
-      'createdAt': Timestamp.fromDate(createdAt),
-      'status': status.name,
-      'previousLocations': previousLocations,
-    };
+  
+  // Convert MeetingStatus to API status string
+  String get apiStatus {
+    switch (status) {
+      case MeetingStatus.pending:
+        return 'suggested';
+      case MeetingStatus.accepted:
+        return 'accepted';
+      case MeetingStatus.rejected:
+        return 'rejected';
+      case MeetingStatus.cancelled:
+        return 'cancelled';
+    }
   }
 }
 
@@ -65,7 +88,6 @@ enum MeetingStatus {
   pending,
   accepted,
   rejected,
-  counterProposal,
   cancelled
 }
 
@@ -78,8 +100,6 @@ extension MeetingStatusExtension on MeetingStatus {
         return 'Accepted';
       case MeetingStatus.rejected:
         return 'Rejected';
-      case MeetingStatus.counterProposal:
-        return 'Pending';
       case MeetingStatus.cancelled:
         return 'Cancelled';
     }
@@ -93,8 +113,6 @@ extension MeetingStatusExtension on MeetingStatus {
         return Colors.green;
       case MeetingStatus.rejected:
         return Colors.red;
-      case MeetingStatus.counterProposal:
-        return Colors.blue;
       case MeetingStatus.cancelled:
         return Colors.grey;
     }

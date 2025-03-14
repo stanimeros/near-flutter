@@ -3,6 +3,7 @@ import 'package:action_slider/action_slider.dart';
 import 'package:flutter_near/models/meeting.dart';
 import 'package:flutter_near/services/spatial_db.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 class MeetingConfirmationSheet extends StatefulWidget {
   final Point point;
   final Meeting? currentMeeting;
@@ -37,10 +38,8 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
   @override
   Widget build(BuildContext context) {
     if (!widget.isNewSuggestion && widget.currentMeeting != null) {
-      final bool isPast = _isMeetingPast(widget.currentMeeting!.time);
-      final bool canInteract = (widget.currentMeeting!.status == MeetingStatus.pending || 
-                              widget.currentMeeting!.status == MeetingStatus.counterProposal) && 
-                              !isPast;
+      final bool isPast = _isMeetingPast(widget.currentMeeting!.datetime);
+      final bool canInteract = widget.currentMeeting!.status == MeetingStatus.pending && !isPast;
 
       return Container(
         width: double.infinity,
@@ -80,7 +79,7 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  formatDateTime(widget.currentMeeting!.time),
+                  formatDateTime(widget.currentMeeting!.datetime),
                   style: Theme.of(context).textTheme.bodyLarge,
                 ),
                 const SizedBox(width: 8),
@@ -128,7 +127,7 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  if (widget.currentUserId == widget.currentMeeting!.senderId)
+                  if (widget.onCancel != null)
                     ElevatedButton.icon(
                       onPressed: widget.onCancel,
                       icon: const Icon(LucideIcons.x, color: Colors.red),
@@ -136,32 +135,24 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
                       style: ElevatedButton.styleFrom(
                         foregroundColor: Colors.red,
                       ),
-                    )
-                  else
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (widget.onReject != null)
-                          ElevatedButton.icon(
-                            onPressed: widget.onReject,
-                            icon: const Icon(LucideIcons.x, color: Colors.red),
-                            label: const Text('Reject'),
-                            style: ElevatedButton.styleFrom(
-                              foregroundColor: Colors.red,
-                            ),
-                          ),
-                        if (widget.onReject != null && widget.onAccept != null)
-                          const SizedBox(width: 16),
-                        if (widget.onAccept != null)
-                          ElevatedButton.icon(
-                            onPressed: widget.onAccept,
-                            icon: const Icon(LucideIcons.check, color: Colors.green),
-                            label: const Text('Accept'),
-                            style: ElevatedButton.styleFrom(
-                              foregroundColor: Colors.green,
-                            ),
-                          ),
-                      ],
+                    ),
+                  if (widget.onReject != null)
+                    ElevatedButton.icon(
+                      onPressed: widget.onReject,
+                      icon: const Icon(LucideIcons.x, color: Colors.red),
+                      label: const Text('Reject'),
+                      style: ElevatedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                      ),
+                    ),
+                  if (widget.onAccept != null)
+                    ElevatedButton.icon(
+                      onPressed: widget.onAccept,
+                      icon: const Icon(LucideIcons.check, color: Colors.green),
+                      label: const Text('Accept'),
+                      style: ElevatedButton.styleFrom(
+                        foregroundColor: Colors.green,
+                      ),
                     ),
                 ],
               ),
