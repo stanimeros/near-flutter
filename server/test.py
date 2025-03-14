@@ -15,6 +15,16 @@ THESSALONIKI_CENTER = {
     "latitude": 40.6401
 }
 
+EVOSMOS_POINT = {
+    "longitude": 22.91143192126404,  # Guaranteed point within ΕΥΟΣΜΟΥ
+    "latitude": 40.67714716078126
+}
+   
+KALAMARIA_POINT = {
+    "longitude": 22.958349035008524,  # Guaranteed point within ΚΑΛΑΜΑΡΙΑΣ
+    "latitude": 40.57642150775372
+}
+
 # Generate random coordinates near Thessaloniki
 def random_location_near_thessaloniki():
     # Random offset within ~5km
@@ -70,18 +80,14 @@ def test_points_api():
 def test_clusters_api():
     print("\n=== Testing /api/clusters endpoint ===")
     
-    # Generate two random locations
-    loc1 = random_location_near_thessaloniki()
-    loc2 = random_location_near_thessaloniki()
-    
     params = {
-        "lon1": loc1["longitude"],
-        "lat1": loc1["latitude"],
-        "lon2": loc2["longitude"],
-        "lat2": loc2["latitude"]
+        "lon1": EVOSMOS_POINT["longitude"],
+        "lat1": EVOSMOS_POINT["latitude"],
+        "lon2": KALAMARIA_POINT["longitude"],
+        "lat2": KALAMARIA_POINT["latitude"]
     }
     
-    print(f"Using locations: {params}")
+    print(f"Using a Kalamaria point and an Evosmos point:")
     
     # Make the request
     response = requests.get(
