@@ -408,10 +408,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               _markers.add(_createPOIMarker(meetingPoint, isCurrentSuggestion: true));
             });
           }
-
-          if (context.mounted) {
-            Navigator.pop(context);
-          }
+          
+          // Don't pop the navigation - let the user close the sheet when ready
         } : null,
         onAccept: allowAccept ? () async {
           final success = await meetingService.acceptMeeting(
@@ -434,10 +432,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               _markers.add(_createPOIMarker(meetingPoint, isCurrentSuggestion: true));
             });
           }
-
-          if (context.mounted) {
-            Navigator.pop(context);
-          }
+          
+          // Don't pop the navigation - let the user close the sheet when ready
         } : null,
         onConfirm: !viewOnly ? (selectedTime) async {
           if (currentMeeting != null) {
@@ -486,9 +482,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
             }
           }
           
-          if (context.mounted) {
-            Navigator.pop(context);
-          }
+          // Don't pop the navigation - let the user close the sheet when ready
         } : null,
       ),
     );

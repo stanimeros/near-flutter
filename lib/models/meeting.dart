@@ -2,6 +2,40 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+// Helper function to parse dates in different formats
+DateTime parseDate(String? dateStr) {
+  if (dateStr == null) return DateTime.now();
+  
+  try {
+    // Try standard ISO format first
+    return DateTime.parse(dateStr);
+  } catch (e) {
+    try {
+      // Try HTTP date format (RFC 1123)
+      // Example: "Fri, 14 Mar 2025 10:44:49 GMT"
+      final httpFormat = DateFormat('EEE, dd MMM yyyy HH:mm:ss \'GMT\'');
+      return httpFormat.parse(dateStr);
+    } catch (e) {
+      try {
+        // Try alternative HTTP date format with day as single digit
+        // Example: "Fri, 4 Mar 2025 10:44:49 GMT"
+        final httpFormatSingleDigitDay = DateFormat('EEE, d MMM yyyy HH:mm:ss \'GMT\'');
+        return httpFormatSingleDigitDay.parse(dateStr);
+      } catch (e) {
+        try {
+          // Try without seconds
+          // Example: "Fri, 14 Mar 2025 10:44 GMT"
+          final httpFormatNoSeconds = DateFormat('EEE, dd MMM yyyy HH:mm \'GMT\'');
+          return httpFormatNoSeconds.parse(dateStr);
+        } catch (e) {
+          debugPrint('Error parsing date: $dateStr');
+          return DateTime.now();
+        }
+      }
+    }
+  }
+}
+
 class Meeting {
   final String token;
   DateTime datetime;
@@ -38,11 +72,7 @@ class Meeting {
     
     // Update datetime
     if (data['datetime'] != null) {
-      try {
-        datetime = DateTime.parse(data['datetime']);
-      } catch (e) {
-        debugPrint('Error parsing datetime: ${data['datetime']}');
-      }
+      datetime = parseDate(data['datetime']);
     }
     
     // Update location
@@ -55,11 +85,7 @@ class Meeting {
     
     // Update updatedAt
     if (data['updated_at'] != null) {
-      try {
-        updatedAt = DateTime.parse(data['updated_at']);
-      } catch (e) {
-        debugPrint('Error parsing updated_at: ${data['updated_at']}');
-      }
+      updatedAt = parseDate(data['updated_at']);
     }
   }
 
@@ -77,33 +103,13 @@ class Meeting {
         break;
     }
     
-    DateTime createdAt;
-    try {
-      createdAt = DateTime.parse(data['created_at']);
-    } catch (e) {
-      debugPrint('Error parsing created_at: ${data['created_at']}');
-      createdAt = DateTime.now();
-    }
-    
-    DateTime updatedAt;
-    try {
-      updatedAt = data['updated_at'] != null 
-          ? DateTime.parse(data['updated_at']) 
-          : createdAt;
-    } catch (e) {
-      debugPrint('Error parsing updated_at: ${data['updated_at']}');
-      updatedAt = createdAt;
-    }
-    
-    DateTime datetime;
-    try {
-      datetime = data['datetime'] != null 
-          ? DateTime.parse(data['datetime']) 
-          : DateTime.now();
-    } catch (e) {
-      debugPrint('Error parsing datetime: ${data['datetime']}');
-      datetime = DateTime.now();
-    }
+    final createdAt = parseDate(data['created_at']);
+    final updatedAt = data['updated_at'] != null 
+        ? parseDate(data['updated_at']) 
+        : createdAt;
+    final datetime = data['datetime'] != null 
+        ? parseDate(data['datetime']) 
+        : DateTime.now();
     
     return Meeting(
       token: data['token'],

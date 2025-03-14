@@ -49,10 +49,8 @@ class MeetingService {
               token: meetingData['token'],
               datetime: DateTime.now().add(const Duration(days: 1)), // Default to tomorrow
               location: const GeoPoint(0, 0), // Will be set when suggesting location
-              updatedAt: meetingData['updated_at'] != null 
-                  ? DateTime.parse(meetingData['updated_at']) 
-                  : DateTime.parse(meetingData['created_at']),
-              createdAt: DateTime.parse(meetingData['created_at']),
+              updatedAt: parseDate(meetingData['updated_at']),
+              createdAt: parseDate(meetingData['created_at']),
               status: MeetingStatus.suggested,
             );
           }

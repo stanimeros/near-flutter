@@ -44,8 +44,7 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
   Widget build(BuildContext context) {
     // If we have a current meeting and we're not creating/updating
     if (widget.currentMeeting != null && widget.viewOnly) {
-      final bool isPast = _isMeetingPast(widget.currentMeeting!.datetime);
-      final bool canInteract = widget.currentMeeting!.status == MeetingStatus.suggested && !isPast;
+      final bool canInteract = widget.currentMeeting!.status == MeetingStatus.suggested;
 
       return Container(
         width: double.infinity,
@@ -111,18 +110,6 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
               'Created on: ${formatDateTime(widget.currentMeeting!.createdAt)}',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
-            const SizedBox(height: 8),
-            if (isPast)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  'Meeting time has passed',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ),
             const SizedBox(height: 24),
             if (canInteract)
               Row(
@@ -130,7 +117,14 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
                 children: [
                   if (widget.onReject != null)
                     ElevatedButton.icon(
-                      onPressed: widget.onReject,
+                      onPressed: () async {
+                        widget.onReject!();
+                        // Add a small delay before closing the sheet
+                        await Future.delayed(const Duration(milliseconds: 500));
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                        }
+                      },
                       icon: const Icon(LucideIcons.x, color: Colors.red),
                       label: const Text('Reject'),
                       style: ElevatedButton.styleFrom(
@@ -139,7 +133,14 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
                     ),
                   if (widget.onAccept != null)
                     ElevatedButton.icon(
-                      onPressed: widget.onAccept,
+                      onPressed: () async {
+                        widget.onAccept!();
+                        // Add a small delay before closing the sheet
+                        await Future.delayed(const Duration(milliseconds: 500));
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                        }
+                      },
                       icon: const Icon(LucideIcons.check, color: Colors.green),
                       label: const Text('Accept'),
                       style: ElevatedButton.styleFrom(
@@ -207,12 +208,18 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
             ),
             action: (controller) async {
               controller.loading();
+              
+              // Call onConfirm first and wait for it to complete
+              if (context.mounted && widget.onConfirm != null) {
+                widget.onConfirm!(selectedDateTime);
+              }
+              
+              // Show success state and then close the sheet
               await Future.delayed(const Duration(milliseconds: 500));
               controller.success();
               await Future.delayed(const Duration(milliseconds: 500));
               if (context.mounted) {
                 Navigator.pop(context);
-                widget.onConfirm!(selectedDateTime);
               }
             },
             child: Text(isUpdating ? 'Slide to update location' : 'Slide to create'),
@@ -248,9 +255,5 @@ class _MeetingConfirmationSheetState extends State<MeetingConfirmationSheet> {
         });
       }
     }
-  }
-
-  bool _isMeetingPast(DateTime meetingTime) {
-    return meetingTime.isBefore(DateTime.now());
   }
 } 
