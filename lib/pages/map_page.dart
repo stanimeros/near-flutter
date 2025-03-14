@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_near/services/firestore.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
@@ -39,6 +38,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   Meeting? _suggestedMeeting;  // Track current suggestion
 
   Set<Marker> _markers = {};
+  Set<Polygon> _cityPolygons = {}; // Add this to store city polygons
   bool _shouldShowPOIs = true;  // Add this to control POI visibility
   
   bool _zoomChanged = false;
@@ -149,6 +149,9 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       );
     }
 
+    // Load city polygons and POIs when map is created
+    _loadCityPolygonsInViewport();
+    _loadPOIsInViewport();
   }
 
   void _onCameraMove(CameraPosition position) {
@@ -161,35 +164,99 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
   void _onCameraIdle() {
     if (_zoomChanged) {
+      _loadCityPolygonsInViewport();
       _loadPOIsInViewport();
       _zoomChanged = false;
+    }
+  }
+
+  // New method to load city polygons
+  Future<void> _loadCityPolygonsInViewport() async {
+    if (_mapController == null) return;
+
+    try {
+      final bounds = await _mapController!.getVisibleRegion();
+      final BoundingBox bbox = BoundingBox(
+        bounds.southwest.longitude,
+        bounds.northeast.longitude,
+        bounds.southwest.latitude,
+        bounds.northeast.latitude
+      );
+      
+      // Get city polygons from the API
+      final cities = await SpatialDb().getCitiesInBoundingBox(bbox, httpClient: httpClient);
+      
+      // Create polygon set
+      Set<Polygon> polygons = {};
+      
+      for (var city in cities) {
+        // Parse GeoJSON coordinates
+        final geometry = city['geometry'];
+        if (geometry['type'] == 'Polygon') {
+          List<List<dynamic>> coordinates = List<List<dynamic>>.from(geometry['coordinates'][0]);
+          
+          // Convert coordinates to LatLng list
+          List<LatLng> polygonPoints = coordinates.map((coord) {
+            return LatLng(coord[1], coord[0]);
+          }).toList();
+          
+          // Create a polygon for each city
+          polygons.add(
+            Polygon(
+              polygonId: PolygonId('city_${city['id']}'),
+              points: polygonPoints,
+              strokeWidth: 2,
+              strokeColor: Colors.blue,
+              fillColor: Colors.blue.withAlpha(100),
+              consumeTapEvents: true,
+              onTap: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('City: ${city['name']}'))
+                );
+              }
+            )
+          );
+        }
+      }
+      
+      setState(() {
+        _cityPolygons = polygons;
+      });
+      
+    } catch (e) {
+      debugPrint('Error loading city polygons: $e');
     }
   }
 
   Future<void> _loadPOIsInViewport() async {
     if (_mapController == null || !_shouldShowPOIs) return;
 
-    _markers.clear();
+    // Keep existing meeting markers
+    Set<Marker> meetingMarkers = _markers.where((marker) {
+      return marker.markerId.value.contains('meeting_') || 
+             marker.markerId.value.contains('previous_');
+    }).toSet();
+
+    // Clear other markers
+    _markers = meetingMarkers;
 
     // Only show polygons and load cells if we're showing POIs
     if (_shouldShowPOIs) {
-      final bounds = await _mapController!.getVisibleRegion();
-      final eastPoint = GeoPoint(bounds.northeast.latitude, bounds.northeast.longitude);
-      final westPoint = GeoPoint(bounds.southwest.latitude, bounds.southwest.longitude);
+      // final bounds = await _mapController!.getVisibleRegion();
+      // final eastPoint = GeoPoint(bounds.northeast.latitude, bounds.northeast.longitude);
+      // final westPoint = GeoPoint(bounds.southwest.latitude, bounds.southwest.longitude);
       
-      // Calculate eps as a fraction of the map width
-      double eps = Geolocator.distanceBetween(
-        eastPoint.latitude,
-        eastPoint.longitude,
-        westPoint.latitude,
-        westPoint.longitude
-      ) / 20 / 111000; // Convert meters to degrees (roughly)
+      // // Calculate eps as a fraction of the map width
+      // double eps = Geolocator.distanceBetween(
+      //   eastPoint.latitude,
+      //   eastPoint.longitude,
+      //   westPoint.latitude,
+      //   westPoint.longitude
+      // ) / 20 / 111000; // Convert meters to degrees (roughly)
 
       final points = await SpatialDb().getClustersBetweenTwoPoints(
         widget.currentUser!.getPoint(), 
-        widget.friend!.getPoint(), 
-        method: 'dbscan',
-        eps: eps,
+        widget.friend!.getPoint(),
         httpClient: httpClient
       );
 
@@ -218,6 +285,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     bool isCurrentSuggestion = false,
     bool isPreviousPoint = false,
   }) {
+    String markerId;
+    
     // First check if this point matches the current meeting location
     bool isCurrentMeetingPoint = _suggestedMeeting != null && 
       point.lat == _suggestedMeeting!.location.latitude &&
@@ -226,6 +295,15 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     // Then check if this point is in the previous locations
     bool isInPreviousLocations = _suggestedMeeting?.previousLocations.any((loc) => 
       loc.latitude == point.lat && loc.longitude == point.lon) ?? false;
+
+    // Create appropriate marker ID
+    if (isCurrentMeetingPoint) {
+      markerId = 'meeting_${point.lon}_${point.lat}';
+    } else if (isInPreviousLocations) {
+      markerId = 'previous_${point.lon}_${point.lat}';
+    } else {
+      markerId = 'marker_${point.lon}_${point.lat}';
+    }
 
     // If it's the current meeting point, show with status color
     if (isCurrentMeetingPoint && _suggestedMeeting != null) {
@@ -243,7 +321,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
           hue = BitmapDescriptor.hueRed;
       }
       return Marker(
-        markerId: MarkerId('marker_${point.lon}_${point.lat}'),
+        markerId: MarkerId(markerId),
         position: LatLng(point.lat, point.lon),
         icon: BitmapDescriptor.defaultMarkerWithHue(hue),
         onTap: () => _onMarkerTapped(point),
@@ -253,7 +331,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     // If it's a previous location point, show in azure
     if (isInPreviousLocations) {
       return Marker(
-        markerId: MarkerId('marker_${point.lon}_${point.lat}'),
+        markerId: MarkerId(markerId),
         position: LatLng(point.lat, point.lon),
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
         onTap: () => _onMarkerTapped(point),
@@ -262,7 +340,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
     // Otherwise it's a regular POI marker in green
     return Marker(
-      markerId: MarkerId('marker_${point.lon}_${point.lat}'),
+      markerId: MarkerId(markerId),
       position: LatLng(point.lat, point.lon),
       icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
       onTap: () => _onMarkerTapped(point),
@@ -369,7 +447,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
             );
             
             // Update only the current marker
-            _markers.removeWhere((m) => m.markerId.value == 'marker_${meetingPoint.lon}_${meetingPoint.lat}');
+            _markers.removeWhere((m) => m.markerId.value == 'meeting_${meetingPoint.lon}_${meetingPoint.lat}');
             _markers.add(_createPOIMarker(meetingPoint, isCurrentSuggestion: true));
           });
 
@@ -548,6 +626,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
                   myLocationEnabled: true,
                   myLocationButtonEnabled: true,
                   markers: _markers,
+                  polygons: _cityPolygons, // Add the city polygons
                   onCameraMove: _onCameraMove,
                   onCameraIdle: _onCameraIdle,
                 ),
