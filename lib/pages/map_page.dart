@@ -244,14 +244,38 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     }
 
     for (var point in points) {
-      _markers.add(_createPOIMarker(point));
+      // Skip adding POI markers for points that already have a meeting marker
+      bool isExistingMeetingPoint = false;
+      for (var marker in meetingMarkers) {
+        LatLng markerPos = marker.position;
+        if (point.lat == markerPos.latitude && point.lon == markerPos.longitude) {
+          isExistingMeetingPoint = true;
+          break;
+        }
+      }
+      
+      if (!isExistingMeetingPoint) {
+        _markers.add(_createPOIMarker(point));
+      }
     }
-
-    // Add marker for current meeting location
+    
+    // Make sure the current meeting marker exists
     if (_suggestedMeeting != null) {
-      // Add marker for current location
+      // Check if we already have a marker for the current meeting
+      bool hasCurrentMeetingMarker = false;
       Point currentPoint = Point(_suggestedMeeting!.location.longitude, _suggestedMeeting!.location.latitude);
-      _markers.add(_createPOIMarker(currentPoint, isCurrentSuggestion: true));
+      
+      for (var marker in _markers) {
+        if (marker.markerId.value == 'meeting_${currentPoint.lon}_${currentPoint.lat}') {
+          hasCurrentMeetingMarker = true;
+          break;
+        }
+      }
+      
+      // If not, add it
+      if (!hasCurrentMeetingMarker) {
+        _markers.add(_createPOIMarker(currentPoint, isCurrentSuggestion: true));
+      }
     }
 
     setState(() {});
@@ -259,7 +283,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
   Marker _createPOIMarker(Point point, {
     bool isCurrentSuggestion = false,
-    bool isPreviousPoint = false,
   }) {
     String markerId;
     
@@ -297,17 +320,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       );
     }
 
-    // If it's a previous location point, show in azure
-    if (isPreviousPoint) {
-      return Marker(
-        markerId: MarkerId(markerId),
-        position: LatLng(point.lat, point.lon),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-        onTap: () => _onMarkerTapped(point),
-      );
-    }
-
-    // Otherwise it's a regular POI marker in green
+    // We don't want to show previous meeting points, so skip the isPreviousPoint check
+    // and just return a regular POI marker
     return Marker(
       markerId: MarkerId(markerId),
       position: LatLng(point.lat, point.lon),
@@ -395,8 +409,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               _markers.removeWhere((m) => m.markerId.value == 'meeting_${meetingPoint.lon}_${meetingPoint.lat}');
               _markers.add(_createPOIMarker(meetingPoint, isCurrentSuggestion: true));
               
-              // Reload POIs to show clusters
-              _loadPOIsInViewport();
+              // Don't reload all POIs
             });
           }
         } : null,
@@ -418,13 +431,18 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               _markers.removeWhere((m) => m.markerId.value == 'meeting_${meetingPoint.lon}_${meetingPoint.lat}');
               _markers.add(_createPOIMarker(meetingPoint, isCurrentSuggestion: true));
               
-              // Reload POIs to show clusters
-              _loadPOIsInViewport();
+              // Don't reload all POIs
             });
           }
         } : null,
         onConfirm: !viewOnly ? (selectedTime) async {
           if (currentMeeting != null) {
+            // Store the previous meeting point before updating
+            Point previousPoint = Point(
+              currentMeeting.location.longitude,
+              currentMeeting.location.latitude
+            );
+            
             // Update existing meeting with a new suggestion
             final updatedMeeting = await meetingService.suggestMeeting(
               currentMeeting.token,
@@ -437,13 +455,23 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
             if (updatedMeeting != null) {
               setState(() {
                 _suggestedMeeting = updatedMeeting;
-                // Update marker but don't clear all markers
+                
+                // Remove the old meeting marker
                 _markers.removeWhere((m) => 
-                  m.markerId.value == 'meeting_${updatedMeeting.location.longitude}_${updatedMeeting.location.latitude}');
+                  m.markerId.value == 'meeting_${previousPoint.lon}_${previousPoint.lat}');
+                
+                // Add the previous point back as a normal cluster marker (green)
+                _markers.add(Marker(
+                  markerId: MarkerId('marker_${previousPoint.lon}_${previousPoint.lat}'),
+                  position: LatLng(previousPoint.lat, previousPoint.lon),
+                  icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+                  onTap: () => _onMarkerTapped(previousPoint),
+                ));
+                
+                // Add the new current point marker
                 _markers.add(_createPOIMarker(point, isCurrentSuggestion: true));
                 
-                // Reload POIs to show clusters
-                _loadPOIsInViewport();
+                // Don't reload all POIs, just update the specific markers
               });
             }
           } else {
@@ -464,13 +492,10 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               
               setState(() {
                 _suggestedMeeting = suggestedMeeting;                
-                // Update marker but don't clear all markers
-                _markers.removeWhere((m) => 
-                  m.markerId.value == 'meeting_${suggestedMeeting.location.longitude}_${suggestedMeeting.location.latitude}');
+                // Add the new meeting marker without clearing others
                 _markers.add(_createPOIMarker(point, isCurrentSuggestion: true));
                 
-                // Reload POIs to show clusters
-                _loadPOIsInViewport();
+                // Don't reload all POIs
               });
             }
           }
