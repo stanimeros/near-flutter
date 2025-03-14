@@ -143,7 +143,7 @@ def get_clusters_for_locations():
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Find cities that contain these points
+        # First try to find cities that contain these points
         cur.execute("""
             WITH point1 AS (
                 SELECT ST_SetSRID(ST_MakePoint(%s, %s), 4326) AS geom
@@ -151,36 +151,82 @@ def get_clusters_for_locations():
             point2 AS (
                 SELECT ST_SetSRID(ST_MakePoint(%s, %s), 4326) AS geom
             ),
-            cities1 AS (
-                SELECT c.id, c.name
+            cities_containing_point1 AS (
+                SELECT c.id, c.name, 0 as distance, 'point1' as point_source
                 FROM cities c, point1 p
                 WHERE ST_Contains(c.geom, p.geom)
+                LIMIT 1
             ),
-            cities2 AS (
-                SELECT c.id, c.name
+            cities_containing_point2 AS (
+                SELECT c.id, c.name, 0 as distance, 'point2' as point_source
                 FROM cities c, point2 p
                 WHERE ST_Contains(c.geom, p.geom)
+                LIMIT 1
             ),
-            all_cities AS (
-                SELECT id, name FROM cities1
+            cities_containing AS (
+                SELECT * FROM cities_containing_point1
                 UNION
-                SELECT id, name FROM cities2
+                SELECT * FROM cities_containing_point2
             )
-            SELECT id, name FROM all_cities
+            SELECT id, name, distance FROM cities_containing
         """, (lon1, lat1, lon2, lat2))
         
         cities = cur.fetchall()
         
+        # If no cities contain the points, find the nearest cities
         if not cities:
-            return jsonify({
-                'count': 0,
-                'message': 'No cities found containing the specified locations',
-                'clusters': []
-            })
+            logging.info("Finding nearest cities for points")
+            
+            cur.execute("""
+                WITH 
+                point1 AS (
+                    SELECT ST_SetSRID(ST_MakePoint(%s, %s), 4326) AS geom
+                ),
+                point2 AS (
+                    SELECT ST_SetSRID(ST_MakePoint(%s, %s), 4326) AS geom
+                ),
+                nearest_to_point1 AS (
+                    SELECT 
+                        c.id,
+                        c.name,
+                        ST_Distance(c.geom::geography, p.geom::geography) as distance,
+                        'point1' as point_source
+                    FROM cities c, point1 p
+                    ORDER BY c.geom <-> p.geom
+                    LIMIT 1
+                ),
+                nearest_to_point2 AS (
+                    SELECT 
+                        c.id,
+                        c.name,
+                        ST_Distance(c.geom::geography, p.geom::geography) as distance,
+                        'point2' as point_source
+                    FROM cities c, point2 p
+                    ORDER BY c.geom <-> p.geom
+                    LIMIT 1
+                )
+                SELECT * FROM nearest_to_point1
+                UNION ALL
+                SELECT * FROM nearest_to_point2
+            """, (lon1, lat1, lon2, lat2))
+            
+            cities.extend(cur.fetchall())
+            
+            if not cities:
+                # If still no cities, return empty response
+                return jsonify({
+                    'count': 0,
+                    'message': 'No cities found near the specified locations',
+                    'clusters': []
+                })
         
-        # Get city IDs
-        city_ids = [city['id'] for city in cities]
+        # Log the cities found
         city_names = [city['name'] for city in cities]
+        logging.info(f"Found cities: {', '.join(city_names)}")
+        
+        # Get city IDs (remove duplicates)
+        city_ids = list(set([city['id'] for city in cities]))
+        city_names = list(set(city_names))
         
         # Get clusters for these cities
         placeholders = ','.join(['%s'] * len(city_ids))

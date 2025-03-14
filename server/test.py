@@ -26,6 +26,17 @@ KALAMARIA_POINT = {
     "latitude": 40.57642150775372
 }
 
+# Points outside city boundaries
+OUTSIDE_POINT_1 = {
+    "longitude": 22.5,  # Point far west of Thessaloniki
+    "latitude": 40.3
+}
+
+OUTSIDE_POINT_2 = {
+    "longitude": 23.2,  # Point far east of Thessaloniki
+    "latitude": 40.8
+}
+
 # Generate random coordinates near Thessaloniki
 def random_location_near_thessaloniki():
     # Random offset within ~5km
@@ -108,6 +119,8 @@ def test_cities_api():
 def test_clusters_api():
     print("\n=== Testing /api/clusters endpoint ===")
     
+    # Test 1: Points within city boundaries (Evosmos and Kalamaria)
+    print("\n--- Test 1: Points within city boundaries ---")
     params = {
         "lon1": EVOSMOS_POINT["longitude"],
         "lat1": EVOSMOS_POINT["latitude"],
@@ -116,6 +129,8 @@ def test_clusters_api():
     }
     
     print(f"Using a Kalamaria point and an Evosmos point:")
+    print(f"Point 1: {params['lon1']}, {params['lat1']}")
+    print(f"Point 2: {params['lon2']}, {params['lat2']}")
     
     # Make the request
     response = requests.get(
@@ -131,10 +146,136 @@ def test_clusters_api():
         if 'cities' in data and len(data['cities']) > 0:
             print(f"Cities found: {[city['name'] for city in data['cities']]}")
             
-            # Print sample clusters from first city if available
-            first_city = data['cities'][0]
-            if len(first_city['clusters']) > 0:
-                print(f"Sample cluster from {first_city['name']}:", first_city['clusters'][0])
+            # Verify we got exactly 2 cities (one for each point)
+            if len(data['cities']) == 2:
+                print("✅ Test passed: Found exactly 2 cities (one for each point)")
+            else:
+                print(f"❌ Test failed: Expected 2 cities, got {len(data['cities'])}")
+            
+            # Print sample clusters from each city if available
+            for city in data['cities']:
+                if len(city['clusters']) > 0:
+                    print(f"Sample cluster from {city['name']}:", city['clusters'][0])
+    else:
+        print("Error:", response.text)
+    
+    # Test 2: Points outside city boundaries
+    print("\n--- Test 2: Points outside city boundaries ---")
+    params = {
+        "lon1": OUTSIDE_POINT_1["longitude"],
+        "lat1": OUTSIDE_POINT_1["latitude"],
+        "lon2": OUTSIDE_POINT_2["longitude"],
+        "lat2": OUTSIDE_POINT_2["latitude"]
+    }
+    
+    print(f"Using points outside city boundaries:")
+    print(f"Point 1: {params['lon1']}, {params['lat1']}")
+    print(f"Point 2: {params['lon2']}, {params['lat2']}")
+    
+    # Make the request
+    response = requests.get(
+        f"{BASE_URL}/clusters",
+        params=params,
+    )
+    
+    # Print results
+    print(f"Status code: {response.status_code}")
+    if response.status_code == 200:
+        data = response.json()
+        print(f"Found {data['count']} clusters")
+        if 'cities' in data and len(data['cities']) > 0:
+            print(f"Cities found: {[city['name'] for city in data['cities']]}")
+            
+            # Verify we got at most 2 cities (one for each point)
+            if len(data['cities']) <= 2:
+                print(f"✅ Test passed: Found {len(data['cities'])} cities (at most one for each point)")
+            else:
+                print(f"❌ Test failed: Expected at most 2 cities, got {len(data['cities'])}")
+            
+            # Print sample clusters from each city if available
+            for city in data['cities']:
+                if len(city['clusters']) > 0:
+                    print(f"Sample cluster from {city['name']}:", city['clusters'][0])
+        else:
+            print("No cities found, which is acceptable for points far outside city boundaries")
+    else:
+        print("Error:", response.text)
+    
+    # Test 3: One point inside, one point outside
+    print("\n--- Test 3: One point inside, one point outside ---")
+    params = {
+        "lon1": EVOSMOS_POINT["longitude"],
+        "lat1": EVOSMOS_POINT["latitude"],
+        "lon2": OUTSIDE_POINT_1["longitude"],
+        "lat2": OUTSIDE_POINT_1["latitude"]
+    }
+    
+    print(f"Using one point inside a city and one outside:")
+    print(f"Point 1 (inside): {params['lon1']}, {params['lat1']}")
+    print(f"Point 2 (outside): {params['lon2']}, {params['lat2']}")
+    
+    # Make the request
+    response = requests.get(
+        f"{BASE_URL}/clusters",
+        params=params,
+    )
+    
+    # Print results
+    print(f"Status code: {response.status_code}")
+    if response.status_code == 200:
+        data = response.json()
+        print(f"Found {data['count']} clusters")
+        if 'cities' in data and len(data['cities']) > 0:
+            print(f"Cities found: {[city['name'] for city in data['cities']]}")
+            
+            # Verify we got at most 2 cities (one for each point)
+            if len(data['cities']) <= 2:
+                print(f"✅ Test passed: Found {len(data['cities'])} cities (at most one for each point)")
+            else:
+                print(f"❌ Test failed: Expected at most 2 cities, got {len(data['cities'])}")
+            
+            # Print sample clusters from each city if available
+            for city in data['cities']:
+                if len(city['clusters']) > 0:
+                    print(f"Sample cluster from {city['name']}:", city['clusters'][0])
+    else:
+        print("Error:", response.text)
+    
+    # Test 4: Same point twice (should return only one city)
+    print("\n--- Test 4: Same point twice ---")
+    params = {
+        "lon1": EVOSMOS_POINT["longitude"],
+        "lat1": EVOSMOS_POINT["latitude"],
+        "lon2": EVOSMOS_POINT["longitude"],
+        "lat2": EVOSMOS_POINT["latitude"]
+    }
+    
+    print(f"Using the same point twice:")
+    print(f"Point 1 & 2: {params['lon1']}, {params['lat1']}")
+    
+    # Make the request
+    response = requests.get(
+        f"{BASE_URL}/clusters",
+        params=params,
+    )
+    
+    # Print results
+    print(f"Status code: {response.status_code}")
+    if response.status_code == 200:
+        data = response.json()
+        print(f"Found {data['count']} clusters")
+        if 'cities' in data and len(data['cities']) > 0:
+            print(f"Cities found: {[city['name'] for city in data['cities']]}")
+            
+            # Verify we got exactly 1 city (since both points are the same)
+            if len(data['cities']) == 1:
+                print("✅ Test passed: Found exactly 1 city (since both points are the same)")
+            else:
+                print(f"❌ Test failed: Expected 1 city, got {len(data['cities'])}")
+            
+            # Print sample clusters from the city if available
+            if len(data['cities'][0]['clusters']) > 0:
+                print(f"Sample cluster from {data['cities'][0]['name']}:", data['cities'][0]['clusters'][0])
     else:
         print("Error:", response.text)
     
@@ -146,8 +287,15 @@ def test_meetings_api():
     
     # Step 1: Create a meeting
     print("\n--- Creating a meeting ---")
+    location = {
+        "longitude": THESSALONIKI_CENTER["longitude"],
+        "latitude": THESSALONIKI_CENTER["latitude"],
+        "datetime": datetime.now().isoformat()
+    }
     response = requests.post(
         f"{BASE_URL}/meetings",
+        json=location,
+        headers={"Content-Type": "application/json"}
     )
     
     if response.status_code != 200:
@@ -168,6 +316,7 @@ def test_meetings_api():
     response = requests.post(
         f"{BASE_URL}/meetings/{token}/suggest",
         json=location,
+        headers={"Content-Type": "application/json"}
     )
     
     if response.status_code != 200:
@@ -200,6 +349,7 @@ def test_meetings_api():
     response = requests.post(
         f"{BASE_URL}/meetings/{token}/suggest",
         json=new_location,
+        headers={"Content-Type": "application/json"}
     )
     
     if response.status_code != 200:
