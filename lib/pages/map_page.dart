@@ -177,6 +177,12 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       // Get city polygons from the API
       final cities = await SpatialDb().getCitiesInBoundingBox(bbox, httpClient: httpClient);
       
+      // Print city information for debugging
+      debugPrint('Loaded ${cities.length} cities in the viewport');
+      if (cities.isNotEmpty) {
+        debugPrint('Cities found: ${cities.map((city) => city['name']).join(', ')}');
+      }
+      
       // Create polygon set
       Set<Polygon> polygons = {};
       
@@ -232,11 +238,19 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
     // Only show polygons and load cells if we're showing POIs
     if (_shouldShowPOIs) {
-      final points = await SpatialDb().getClustersBetweenTwoPoints(
+      // First try with the actual user and friend points
+      List<Point> points = await SpatialDb().getClustersBetweenTwoPoints(
         widget.currentUser!.getPoint(), 
         widget.friend!.getPoint(),
         httpClient: httpClient
       );
+
+      // Print clusters for debugging
+      debugPrint('Loaded ${points.length} clusters between ${widget.currentUser!.username} and ${widget.friend!.username}');
+      
+      if (points.isNotEmpty) {
+        debugPrint('Sample cluster: (${points[0].lon}, ${points[0].lat})');
+      }
 
       for (var point in points) {
         _markers.add(_createPOIMarker(point));
@@ -374,11 +388,13 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         currentUserId: widget.currentUser!.uid,
         viewOnly: viewOnly,
         onReject: allowReject ? () async {
-          final success = await meetingService.rejectMeeting(_suggestedMeeting!.token);
+          final success = await meetingService.rejectMeeting(
+            _suggestedMeeting!.token,
+            currentMeeting: _suggestedMeeting
+          );
           
           if (success) {
             setState(() {
-              _suggestedMeeting!.status = MeetingStatus.rejected;
               _shouldShowPOIs = false;
               
               // Update the marker with rejected status
@@ -398,11 +414,13 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
           }
         } : null,
         onAccept: allowAccept ? () async {
-          final success = await meetingService.acceptMeeting(_suggestedMeeting!.token);
+          final success = await meetingService.acceptMeeting(
+            _suggestedMeeting!.token,
+            currentMeeting: _suggestedMeeting
+          );
           
           if (success) {
             setState(() {
-              _suggestedMeeting!.status = MeetingStatus.accepted;
               _shouldShowPOIs = false;
               
               // Update the marker with accepted status
@@ -428,7 +446,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               currentMeeting.token,
               point.lon,
               point.lat,
-              selectedTime
+              selectedTime,
+              currentMeeting: currentMeeting
             );
             
             if (updatedMeeting != null) {
@@ -442,34 +461,28 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               });
             }
           } else {
-            // Create a new meeting
-            final newMeeting = await meetingService.createMeeting();
+            // Create a new meeting with location and datetime in a single call
+            final suggestedMeeting = await meetingService.createMeeting(
+              longitude: point.lon,
+              latitude: point.lat,
+              datetime: selectedTime
+            );
             
-            if (newMeeting != null) {
-              // Suggest a location for the meeting
-              final suggestedMeeting = await meetingService.suggestMeeting(
-                newMeeting.token,
-                point.lon,
-                point.lat,
-                selectedTime
+            if (suggestedMeeting != null) {
+              // Save the meeting in Firestore to enable real-time updates
+              await FirestoreService().createMeeting(
+                suggestedMeeting.token,
+                widget.currentUser!.uid,
+                widget.friend!.uid
               );
               
-              if (suggestedMeeting != null) {
-                // Save the meeting in Firestore to enable real-time updates
-                await FirestoreService().createMeeting(
-                  suggestedMeeting.token,
-                  widget.currentUser!.uid,
-                  widget.friend!.uid
-                );
+              setState(() {
+                _suggestedMeeting = suggestedMeeting;
+                _shouldShowPOIs = false;
                 
-                setState(() {
-                  _suggestedMeeting = suggestedMeeting;
-                  _shouldShowPOIs = false;
-                  
-                  _markers.clear();
-                  _markers.add(_createPOIMarker(point, isCurrentSuggestion: true));
-                });
-              }
+                _markers.clear();
+                _markers.add(_createPOIMarker(point, isCurrentSuggestion: true));
+              });
             }
           }
           

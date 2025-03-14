@@ -241,6 +241,23 @@ def create_meeting():
     try:
         # Generate a unique token
         token = str(uuid.uuid4())
+
+        # Get location from request
+        data = request.get_json()
+        if not data or 'longitude' not in data or 'latitude' not in data:
+            return jsonify({'error': 'Missing location data'}), 400
+        
+        longitude = float(data['longitude'])
+        latitude = float(data['latitude'])
+        
+        # Get datetime if provided, otherwise use current time
+        meeting_datetime = data.get('datetime')
+        if not meeting_datetime:
+            meeting_datetime = datetime.now().isoformat()
+        
+        # Validate coordinates
+        if not (-180 <= longitude <= 180 and -90 <= latitude <= 90):
+            return jsonify({'error': 'Invalid coordinates'}), 400
         
         # Get connection from pool
         conn = get_db_connection()
@@ -248,10 +265,10 @@ def create_meeting():
         
         # Insert new meeting with 'created' status
         cur.execute("""
-            INSERT INTO meetings (token, status)
-            VALUES (%s, %s)
-            RETURNING id, token, status, created_at
-        """, (token, 'created'))
+            INSERT INTO meetings (token, location_lon, location_lat, datetime, status)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id, token, status, location_lon, location_lat, datetime, created_at
+        """, (token, longitude, latitude, meeting_datetime, 'suggested'))
         
         meeting = cur.fetchone()
         conn.commit()
