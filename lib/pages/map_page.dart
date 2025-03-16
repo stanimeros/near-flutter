@@ -39,7 +39,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   Meeting? _suggestedMeeting;  // Track current suggestion
 
   Set<Marker> _markers = {};
-  Set<Polygon> _cityPolygons = {}; // Add this to store city polygons
   
   bool _zoomChanged = false;
   double _lastZoomLevel = 0;  // Add this as a class field
@@ -133,8 +132,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
       );
     }
 
-    // Load city polygons and POIs when map is created
-    _loadCityPolygonsInViewport();
     _loadPOIsInViewport();
   }
 
@@ -148,73 +145,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
   void _onCameraIdle() {
     if (_zoomChanged) {
-      _loadCityPolygonsInViewport();
       _loadPOIsInViewport();
       _zoomChanged = false;
-    }
-  }
-
-  // New method to load city polygons
-  Future<void> _loadCityPolygonsInViewport() async {
-    if (_mapController == null) return;
-
-    try {
-      final bounds = await _mapController!.getVisibleRegion();
-      final BoundingBox bbox = BoundingBox(
-        bounds.southwest.longitude,
-        bounds.northeast.longitude,
-        bounds.southwest.latitude,
-        bounds.northeast.latitude
-      );
-      
-      // Get city polygons from the API
-      final cities = await SpatialDb().getCitiesInBoundingBox(bbox, httpClient: httpClient);
-      
-      // Print city information for debugging
-      debugPrint('Loaded ${cities.length} cities in the viewport');
-      if (cities.isNotEmpty) {
-        debugPrint('Cities found: ${cities.map((city) => city['name']).join(', ')}');
-      }
-      
-      // Create polygon set
-      Set<Polygon> polygons = {};
-      
-      for (var city in cities) {
-        // Parse GeoJSON coordinates
-        final geometry = city['geometry'];
-        if (geometry['type'] == 'Polygon') {
-          List<List<dynamic>> coordinates = List<List<dynamic>>.from(geometry['coordinates'][0]);
-          
-          // Convert coordinates to LatLng list
-          List<LatLng> polygonPoints = coordinates.map((coord) {
-            return LatLng(coord[1], coord[0]);
-          }).toList();
-          
-          // Create a polygon for each city
-          polygons.add(
-            Polygon(
-              polygonId: PolygonId('city_${city['id']}'),
-              points: polygonPoints,
-              strokeWidth: 2,
-              strokeColor: Colors.blue,
-              fillColor: Colors.blue.withAlpha(100),
-              consumeTapEvents: true,
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('City: ${city['name']}'))
-                );
-              }
-            )
-          );
-        }
-      }
-      
-      setState(() {
-        _cityPolygons = polygons;
-      });
-      
-    } catch (e) {
-      debugPrint('Error loading city polygons: $e');
     }
   }
 
@@ -452,9 +384,10 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
             );
             
             if (updatedMeeting != null) {
+              // First update the suggested meeting object
+              _suggestedMeeting = updatedMeeting;
+              
               setState(() {
-                _suggestedMeeting = updatedMeeting;
-                
                 // Remove the old meeting marker
                 _markers.removeWhere((m) => 
                   m.markerId.value == 'meeting_${previousPoint.lon}_${previousPoint.lat}');
@@ -489,8 +422,10 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
                 widget.friend!.uid
               );
               
+              // First update the suggested meeting object
+              _suggestedMeeting = suggestedMeeting;
+              
               setState(() {
-                _suggestedMeeting = suggestedMeeting;                
                 // Add the new meeting marker without clearing others
                 _markers.add(_createPOIMarker(point, isCurrentSuggestion: true));
                 
@@ -542,7 +477,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
                   myLocationEnabled: true,
                   myLocationButtonEnabled: true,
                   markers: _markers,
-                  polygons: _cityPolygons, // Add the city polygons
                   onCameraMove: _onCameraMove,
                   onCameraIdle: _onCameraIdle,
                 ),
