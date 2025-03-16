@@ -3,7 +3,7 @@ from psycopg2.extras import DictCursor # type: ignore
 import time
 
 # DBSCAN parameters - final working values
-EPS = 0.001
+EPS = 0.00075
 MIN_POINTS = 4
 
 def connect_db():
