@@ -519,32 +519,42 @@ class SpatialDb {
       
       // Process batch when it reaches 1000 lines
       if (currentBatch.length >= batchSize) {
-        await _processBatch(currentBatch, gf, poisTable);
+        final batchPoints = currentBatch.map((line) {
+        final parts = line.split('-');
+        final lon = double.parse(parts[0]);
+        final lat = double.parse(parts[1]);
+        jts.Point point = gf.createPoint(jts.Coordinate(lon, lat));
+          return GeoPkgGeomWriter().write(point);
+        }).toList();
+
+        if (batchPoints.isNotEmpty) {
+          final values = batchPoints.map((_) => "(?)").join(",");
+          db.execute(
+            "INSERT OR IGNORE INTO ${poisTable.fixedName} (geopoint) VALUES $values",
+            arguments: batchPoints
+          );
+        }
         currentBatch = []; // Clear the batch
       }
     }
     
     // Process any remaining lines
     if (currentBatch.isNotEmpty) {
-      await _processBatch(currentBatch, gf, poisTable);
-    }
-  }
-
-  Future<void> _processBatch(List<String> batch, jts.GeometryFactory gf, TableName poisTable) async {
-    final batchPoints = batch.map((line) {
+      final batchPoints = currentBatch.map((line) {
       final parts = line.split('-');
       final lon = double.parse(parts[0]);
       final lat = double.parse(parts[1]);
       jts.Point point = gf.createPoint(jts.Coordinate(lon, lat));
-      return GeoPkgGeomWriter().write(point);
-    }).toList();
+        return GeoPkgGeomWriter().write(point);
+      }).toList();
 
-    if (batchPoints.isNotEmpty) {
-      final values = batchPoints.map((_) => "(?)").join(",");
-      db.execute(
-        "INSERT OR IGNORE INTO ${poisTable.fixedName} (geopoint) VALUES $values",
-        arguments: batchPoints
-      );
+      if (batchPoints.isNotEmpty) {
+        final values = batchPoints.map((_) => "(?)").join(",");
+        db.execute(
+          "INSERT OR IGNORE INTO ${poisTable.fixedName} (geopoint) VALUES $values",
+          arguments: batchPoints
+        );
+      }
     }
   }
 }

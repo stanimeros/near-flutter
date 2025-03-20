@@ -47,10 +47,8 @@ class Scenarios {
             await SpatialDb().emptyTable(poisTables[i]);
             await SpatialDb().emptyTable(cellsTables[i]);
             await SpatialDb().importPointsFromAsset(poisAssets[i], poisTables[i]);
+            
         }
-
-        // Wait for all downloads to complete before running experiments
-        await Future.delayed(Duration(seconds: 10)); // Optional: add small delay to ensure all operations are complete
 
         // 1. Fixed k=25 with varying dataset sizes
         for (int i = 0; i < poisTables.length; i++) {
