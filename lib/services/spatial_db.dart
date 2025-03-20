@@ -137,7 +137,7 @@ class SpatialDb {
     }
   }
 
-  Future<void> addCellToDb(GridCell cell, TableName cellsTable) async {
+  Future<void> addCellToTable(GridCell cell, TableName cellsTable) async {
     String sql = "INSERT OR IGNORE INTO ${cellsTable.fixedName} (cell_lon, cell_lat) VALUES (?, ?);";
     db.execute(sql, arguments: [cell.lon, cell.lat]);
   }
@@ -217,7 +217,7 @@ class SpatialDb {
 
         if (!existingSet.contains(cellKey)) {
           debugPrint('Downloading new cell $cellKey: ${cell.lon},${cell.lat}');
-          await addCellToDb(cell, cellsTable);
+          await addCellToTable(cell, cellsTable);
           BoundingBox boundingBox = BoundingBox(cell.lon * gridSize, (cell.lon + 1) * gridSize, cell.lat * gridSize, (cell.lat + 1) * gridSize);
           List<Point> points = await downloadPointsFromServer(boundingBox, poisTable);
           if (points.isEmpty) {
@@ -259,7 +259,7 @@ class SpatialDb {
     while (list.length < k) {
       debugPrint('Creating bbox with side ${bufferMeters*2}m');
       BoundingBox boundingBox = await createBufferBoundingBox(lon, lat, bufferMeters);
-      // Get cells in the updated bounding box area
+
       //TODO: Uncomment this when the cells are downloaded
       // await downloadCellsInArea(boundingBox, poisTable, cellsTable);
       List<Point> points = await getPointsInBoundingBox(boundingBox, poisTable);
@@ -318,26 +318,12 @@ class SpatialDb {
       }
       
       final document = jsonDecode(response.body);
-      final jsonPoints = document['points'].map((node) {
-        return {'lon': node['longitude'] as double, 'lat': node['latitude'] as double};
-      }).toList();
-      debugPrint('Got ${jsonPoints.length} points');
-
-      if (jsonPoints.isEmpty) return [];
-
-      jts.GeometryFactory gf = jts.GeometryFactory.defaultPrecision();
-      final values = jsonPoints.map((p) => "(?)").join(",");
-      final arguments = jsonPoints.map((p) {
-        downloadedPoints.add(Point(p['lon']!, p['lat']!));
-        jts.Point point = gf.createPoint(jts.Coordinate(p['lon']!, p['lat']!));
-        return GeoPkgGeomWriter().write(point);
+      downloadedPoints = document['points'].map((node) {
+        return Point(node['longitude'] as double, node['latitude'] as double);
       }).toList();
       
-      if (arguments.isNotEmpty) {
-        db.execute(
-          "INSERT OR IGNORE INTO ${poisTable.fixedName} (geopoint) VALUES $values",
-          arguments: arguments
-        );
+      if (downloadedPoints.isNotEmpty) {
+        await addPointsToTable(downloadedPoints, poisTable);
       }
 
       return downloadedPoints;
@@ -367,24 +353,10 @@ class SpatialDb {
       );
 
       if (response.statusCode == 200) {
-        final jsonPoints = await compute(parsePointsFromJSON, response.body);
-        debugPrint('Got ${jsonPoints.length} points');
+        downloadedPoints = await compute(parsePointsFromJSON, response.body);
 
-        if (jsonPoints.isEmpty) return [];
-
-        jts.GeometryFactory gf = jts.GeometryFactory.defaultPrecision();
-        final values = jsonPoints.map((p) => "(?)").join(",");
-        final arguments = jsonPoints.map((p) {
-          downloadedPoints.add(Point(p['lon']!, p['lat']!));
-          jts.Point point = gf.createPoint(jts.Coordinate(p['lon']!, p['lat']!));
-          return GeoPkgGeomWriter().write(point);
-        }).toList();
-
-        if (arguments.isNotEmpty) {
-          db.execute(
-            "INSERT OR IGNORE INTO ${poisTable.fixedName} (geopoint) VALUES $values",
-            arguments: arguments
-          );
+        if (downloadedPoints.isNotEmpty) {
+          await addPointsToTable(downloadedPoints, poisTable);
         }
       } else {
         debugPrint('Failed to download points: ${response.statusCode} - ${response.body}');
@@ -502,9 +474,29 @@ class SpatialDb {
     }
   }
 
-  Future<void> importPointsFromAsset(String assetPath, TableName poisTable) async {
+  Future<void> addPointsToTable(List<Point> points, TableName poisTable) async {
     int pointsImported = 0;
+    debugPrint('Adding ${points.length} points to ${poisTable.fixedName}');
+
     jts.GeometryFactory gf = jts.GeometryFactory.defaultPrecision();
+    final values = points.map((p) => "(?)").join(",");
+    final arguments = points.map((p) {
+      jts.Point point = gf.createPoint(jts.Coordinate(p.lon, p.lat));
+      return GeoPkgGeomWriter().write(point);
+    }).toList();
+
+    if (arguments.isNotEmpty) {
+      db.execute(
+        "INSERT OR IGNORE INTO ${poisTable.fixedName} (geopoint) VALUES $values",
+        arguments: arguments
+      );
+      pointsImported += arguments.length;
+    }
+
+    debugPrint('Imported $pointsImported points');
+  }   
+
+  Future<void> importPointsFromAsset(String assetPath, TableName poisTable) async {
     const batchSize = 1000;
     List<String> currentBatch = [];
     
@@ -521,21 +513,12 @@ class SpatialDb {
       // Process batch when it reaches 1000 lines
       if (currentBatch.length >= batchSize) {
         final batchPoints = currentBatch.map((line) {
-        final parts = line.split('-');
-        final lon = double.parse(parts[0]);
-        final lat = double.parse(parts[1]);
-        jts.Point point = gf.createPoint(jts.Coordinate(lon, lat));
-          return GeoPkgGeomWriter().write(point);
+          final parts = line.split('-');
+          final lon = double.parse(parts[0]);
+          final lat = double.parse(parts[1]);
+          return Point(lon, lat);
         }).toList();
-
-        if (batchPoints.isNotEmpty) {
-          final values = batchPoints.map((_) => "(?)").join(",");
-          db.execute(
-            "INSERT OR IGNORE INTO ${poisTable.fixedName} (geopoint) VALUES $values",
-            arguments: batchPoints
-          );
-          pointsImported += batchPoints.length;
-        }
+        await addPointsToTable(batchPoints, poisTable);
         currentBatch = []; // Clear the batch
       }
     }
@@ -543,31 +526,21 @@ class SpatialDb {
     // Process any remaining lines
     if (currentBatch.isNotEmpty) {
       final batchPoints = currentBatch.map((line) {
-      final parts = line.split('-');
-      final lon = double.parse(parts[0]);
-      final lat = double.parse(parts[1]);
-      jts.Point point = gf.createPoint(jts.Coordinate(lon, lat));
-        return GeoPkgGeomWriter().write(point);
+        final parts = line.split('-');
+        final lon = double.parse(parts[0]);
+        final lat = double.parse(parts[1]);
+        return Point(lon, lat);
       }).toList();
-
-      if (batchPoints.isNotEmpty) {
-        final values = batchPoints.map((_) => "(?)").join(",");
-        db.execute(
-          "INSERT OR IGNORE INTO ${poisTable.fixedName} (geopoint) VALUES $values",
-          arguments: batchPoints
-        );
-        pointsImported += batchPoints.length;
-      }
+      await addPointsToTable(batchPoints, poisTable);
     }
-    debugPrint('Imported $pointsImported points from $assetPath');
   }
 }
 
-List<Map<String, double>> parsePointsFromJSON(String jsonString){
+List<Point> parsePointsFromJSON(String jsonString){
   final document = jsonDecode(jsonString);
   return document['elements'].map((node) {
     if (node['type'] == 'node') {
-      return {'lon': node['lon'] as double, 'lat': node['lat'] as double};
+      return Point(node['lon'] as double, node['lat'] as double);
     }
     return null;
   }).whereType<Map<String, double>>().toList();
