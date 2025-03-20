@@ -53,7 +53,9 @@ class _FriendsPageState extends State<FriendsPage> {
         currentUser!.kAnonymity,
         pos.longitude,
         pos.latitude,
-        50
+        50,
+        SpatialDb.pois,
+        SpatialDb.cells
       );
       await FirestoreService().setLocation(currentUser!.uid, random.lon, random.lat);
     }

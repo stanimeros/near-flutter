@@ -17,9 +17,9 @@ void main() async {
   // await SpatialDb().deleteDbFile();
   
   // Initialize both databases
-  await SpatialDb().openDbFile();
-  await SpatialDb().createCellsTable();
-  await SpatialDb().createSpatialTable();
+  await SpatialDb().openDbFile(SpatialDb.dbFilename);
+  await SpatialDb().createCellsTable(SpatialDb.cells);
+  await SpatialDb().createSpatialTable(SpatialDb.pois);
   
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,

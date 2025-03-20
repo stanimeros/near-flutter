@@ -8,6 +8,7 @@ import 'package:flutter_geopackage/flutter_geopackage.dart';
 import 'package:dart_hydrologis_db/dart_hydrologis_db.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter/services.dart' show rootBundle;
 
 class Point {
   double lon;
@@ -50,10 +51,10 @@ class SpatialDb {
   static const double metersPerDegree = 111000.0;
   static String dbFilename = 'points.gpkg';
   static TableName pois = TableName("pois", schemaSupported: false);
-  static TableName cells = TableName("cells", schemaSupported: false);
+  static TableName cells = TableName("cells_pois", schemaSupported: false);
   
   // Function to initialize the database
-  Future<void> openDbFile() async {
+  Future<void> openDbFile(String dbFilename) async {
     try {
       ConnectionsHandler ch = ConnectionsHandler();
       Directory directory = await getApplicationDocumentsDirectory();
@@ -67,7 +68,7 @@ class SpatialDb {
     }
   }
 
-  Future<void> deleteDbFile() async {
+  Future<void> deleteDbFile(String dbFilename) async {
     try{
       Directory directory = await getApplicationDocumentsDirectory();
       String dbPath = '${directory.path}/$dbFilename';
@@ -86,11 +87,11 @@ class SpatialDb {
     }
   }
 
-  Future<void> createSpatialTable() async {
+  Future<void> createSpatialTable(TableName poisTable) async {
     try {
-      if (!db.hasTable(pois)){
+      if (!db.hasTable(poisTable)){
         db.createSpatialTable(
-          pois,
+          poisTable,
           4326,
           "geopoint POINT UNIQUE",
           ["id INTEGER PRIMARY KEY AUTOINCREMENT"],
@@ -105,11 +106,11 @@ class SpatialDb {
     }
   }
 
-  Future<void> createCellsTable() async {
+  Future<void> createCellsTable(TableName cellsTable) async {
     try {
-      if (!db.hasTable(cells)) {
+      if (!db.hasTable(cellsTable)) {
         db.createSpatialTable(
-          cells,
+          cellsTable,
           4326,
           "cell_lon INTEGER, cell_lat INTEGER",
           ["id INTEGER PRIMARY KEY AUTOINCREMENT"],
@@ -136,8 +137,8 @@ class SpatialDb {
     }
   }
 
-  Future<void> addCellToDb(GridCell cell) async {
-    String sql = "INSERT OR IGNORE INTO ${cells.fixedName} (cell_lon, cell_lat) VALUES (?, ?);";
+  Future<void> addCellToDb(GridCell cell, TableName cellsTable) async {
+    String sql = "INSERT OR IGNORE INTO ${cellsTable.fixedName} (cell_lon, cell_lat) VALUES (?, ?);";
     db.execute(sql, arguments: [cell.lon, cell.lat]);
   }
 
@@ -172,7 +173,7 @@ class SpatialDb {
     return [];
   }
 
-  Future<List<BoundingBox>> downloadCellsInArea(BoundingBox boundingBox) async {
+  Future<List<BoundingBox>> downloadCellsInArea(BoundingBox boundingBox, TableName poisTable, TableName cellsTable) async {
     double gridSize = 0.005;
     List<BoundingBox> downloadedCells = [];
     try {
@@ -186,7 +187,7 @@ class SpatialDb {
       
       // Get existing cells using the cell indices
       final existingCells = db.select(
-        'SELECT cell_lon, cell_lat FROM ${cells.fixedName} WHERE cell_lon BETWEEN $minLonCell AND $maxLonCell AND cell_lat BETWEEN $minLatCell AND $maxLatCell'
+        'SELECT cell_lon, cell_lat FROM ${cellsTable.fixedName} WHERE cell_lon BETWEEN $minLonCell AND $maxLonCell AND cell_lat BETWEEN $minLatCell AND $maxLatCell'
       );
 
       Set<String> existingSet = {};
@@ -216,11 +217,11 @@ class SpatialDb {
 
         if (!existingSet.contains(cellKey)) {
           debugPrint('Downloading new cell $cellKey: ${cell.lon},${cell.lat}');
-          await addCellToDb(cell);
+          await addCellToDb(cell, cellsTable);
           BoundingBox boundingBox = BoundingBox(cell.lon * gridSize, (cell.lon + 1) * gridSize, cell.lat * gridSize, (cell.lat + 1) * gridSize);
-          List<Point> points = await downloadPointsFromServer(boundingBox);
+          List<Point> points = await downloadPointsFromServer(boundingBox, poisTable);
           if (points.isEmpty) {
-            points = await downloadPointsFromOSM(boundingBox);
+            points = await downloadPointsFromOSM(boundingBox, poisTable);
           }
         }
         
@@ -235,11 +236,11 @@ class SpatialDb {
   }
 
   // Function to get points within a bounding box
-  Future<List<Point>> getPointsInBoundingBox(BoundingBox boundingBox) async {
+  Future<List<Point>> getPointsInBoundingBox(BoundingBox boundingBox, TableName poisTable) async {
     List<Point> list = [];
     DateTime before = DateTime.now();
     List<jts.Geometry?> geometries = db.getGeometriesIn(
-      pois, envelope: boundingBox.envelope
+      poisTable, envelope: boundingBox.envelope
     );
     DateTime after = DateTime.now();
     debugPrint('Query took ${after.difference(before).inMilliseconds.toString()}ms');
@@ -252,15 +253,16 @@ class SpatialDb {
     return list;
   }
 
-  Future<Point> getRandomKNN(int k, double lon, double lat, double bufferMeters) async {
+  Future<Point> getRandomKNN(int k, double lon, double lat, double bufferMeters, TableName poisTable, TableName cellsTable) async {
     List<Point> list = [];
 
     while (list.length < k) {
       debugPrint('Creating bbox with side ${bufferMeters*2}m');
       BoundingBox boundingBox = await createBufferBoundingBox(lon, lat, bufferMeters);
       // Get cells in the updated bounding box area
-      await downloadCellsInArea(boundingBox);
-      List<Point> points = await getPointsInBoundingBox(boundingBox);
+      //TODO: Uncomment this when the cells are downloaded
+      // await downloadCellsInArea(boundingBox, poisTable, cellsTable);
+      List<Point> points = await getPointsInBoundingBox(boundingBox, poisTable);
 
       if (points.length < k) {
         debugPrint('Found ${points.length} points < $k');
@@ -293,7 +295,7 @@ class SpatialDb {
     );
   }
 
-  Future<List<Point>> downloadPointsFromServer(BoundingBox boundingBox) async {
+  Future<List<Point>> downloadPointsFromServer(BoundingBox boundingBox, TableName poisTable) async {
     List<Point> downloadedPoints = [];
     try {
       // Using http instead of https since port 5000 might not be configured for SSL
@@ -333,7 +335,7 @@ class SpatialDb {
       
       if (arguments.isNotEmpty) {
         db.execute(
-          "INSERT OR IGNORE INTO ${pois.fixedName} (geopoint) VALUES $values",
+          "INSERT OR IGNORE INTO ${poisTable.fixedName} (geopoint) VALUES $values",
           arguments: arguments
         );
       }
@@ -345,7 +347,7 @@ class SpatialDb {
     }
   }
 
-  Future<List<Point>> downloadPointsFromOSM(BoundingBox boundingBox) async {
+  Future<List<Point>> downloadPointsFromOSM(BoundingBox boundingBox, TableName poisTable) async {
     List<Point> downloadedPoints = [];
     final uri = Uri.https('overpass-api.de', '/api/interpreter', {
       'data': '[out:json];'
@@ -377,10 +379,10 @@ class SpatialDb {
           jts.Point point = gf.createPoint(jts.Coordinate(p['lon']!, p['lat']!));
           return GeoPkgGeomWriter().write(point);
         }).toList();
-        
+
         if (arguments.isNotEmpty) {
           db.execute(
-            "INSERT OR IGNORE INTO ${pois.fixedName} (geopoint) VALUES $values",
+            "INSERT OR IGNORE INTO ${poisTable.fixedName} (geopoint) VALUES $values",
             arguments: arguments
           );
         }
@@ -497,6 +499,52 @@ class SpatialDb {
     } catch (e) {
       debugPrint('Error getting city polygons: $e');
       return [];
+    }
+  }
+
+  Future<void> importPointsFromAsset(String assetPath, TableName poisTable) async {
+    jts.GeometryFactory gf = jts.GeometryFactory.defaultPrecision();
+    const batchSize = 1000;
+    List<String> currentBatch = [];
+    
+    // Get the asset file as a string stream
+    final ByteData data = await rootBundle.load(assetPath);
+    final String contents = utf8.decode(data.buffer.asUint8List());
+    final Stream<String> lines = Stream.fromIterable(contents.split('\n'));
+    
+    await for (final line in lines) {
+      if (line.isNotEmpty) {
+        currentBatch.add(line);
+      }
+      
+      // Process batch when it reaches 1000 lines
+      if (currentBatch.length >= batchSize) {
+        await _processBatch(currentBatch, gf, poisTable);
+        currentBatch = []; // Clear the batch
+      }
+    }
+    
+    // Process any remaining lines
+    if (currentBatch.isNotEmpty) {
+      await _processBatch(currentBatch, gf, poisTable);
+    }
+  }
+
+  Future<void> _processBatch(List<String> batch, jts.GeometryFactory gf, TableName poisTable) async {
+    final batchPoints = batch.map((line) {
+      final parts = line.split('-');
+      final lon = double.parse(parts[0]);
+      final lat = double.parse(parts[1]);
+      jts.Point point = gf.createPoint(jts.Coordinate(lon, lat));
+      return GeoPkgGeomWriter().write(point);
+    }).toList();
+
+    if (batchPoints.isNotEmpty) {
+      final values = batchPoints.map((_) => "(?)").join(",");
+      db.execute(
+        "INSERT OR IGNORE INTO ${poisTable.fixedName} (geopoint) VALUES $values",
+        arguments: batchPoints
+      );
     }
   }
 }

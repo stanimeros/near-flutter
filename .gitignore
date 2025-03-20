@@ -53,3 +53,5 @@ ios/Runner/GoogleService-Info.plist
 *.keystore
 
 /server/venv/
+
+100km.txt
