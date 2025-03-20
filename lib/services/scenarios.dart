@@ -38,6 +38,8 @@ class Scenarios {
     ];
 
     static const int numRuns = 5; // Number of times to run each experiment
+
+    List<String> results = [];
         
     Future<void> runAllScenarios() async {
         // First download all cells
@@ -59,6 +61,8 @@ class Scenarios {
         for (var k in kValues) {
             await runExperiment(k, poisTables[1], cellsTables[1]);
         }
+
+        debugPrint(results.join('\n'));
     }
 
     Future<void> runExperiment(int k, TableName poisTable, TableName cellsTable) async {
@@ -85,6 +89,6 @@ class Scenarios {
         
         // Calculate and store average time
         double avgTime = times.reduce((a, b) => a + b) / times.length;
-        debugPrint("Dataset: ${poisTable.fixedName}, k: $k, Avg Time: ${avgTime.toStringAsFixed(2)} ms");
+        results.add("Dataset: ${poisTable.fixedName}, k: $k, Avg Time: ${avgTime.toStringAsFixed(2)} ms");
     }
 }

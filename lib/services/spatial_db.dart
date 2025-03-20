@@ -323,6 +323,7 @@ class SpatialDb {
       }).toList();
       
       if (downloadedPoints.isNotEmpty) {
+        debugPrint('Adding ${downloadedPoints.length} points to ${poisTable.fixedName}');
         await addPointsToTable(downloadedPoints, poisTable);
       }
 
@@ -356,6 +357,7 @@ class SpatialDb {
         downloadedPoints = await compute(parsePointsFromJSON, response.body);
 
         if (downloadedPoints.isNotEmpty) {
+          debugPrint('Adding ${downloadedPoints.length} points to ${poisTable.fixedName}');
           await addPointsToTable(downloadedPoints, poisTable);
         }
       } else {
@@ -475,9 +477,6 @@ class SpatialDb {
   }
 
   Future<void> addPointsToTable(List<Point> points, TableName poisTable) async {
-    int pointsImported = 0;
-    debugPrint('Adding ${points.length} points to ${poisTable.fixedName}');
-
     jts.GeometryFactory gf = jts.GeometryFactory.defaultPrecision();
     final values = points.map((p) => "(?)").join(",");
     final arguments = points.map((p) {
@@ -490,13 +489,13 @@ class SpatialDb {
         "INSERT OR IGNORE INTO ${poisTable.fixedName} (geopoint) VALUES $values",
         arguments: arguments
       );
-      pointsImported += arguments.length;
     }
-
-    debugPrint('Imported $pointsImported points');
   }   
 
   Future<void> importPointsFromAsset(String assetPath, TableName poisTable) async {
+    debugPrint('Importing points from $assetPath to ${poisTable.fixedName}');
+
+    int pointsImported = 0;
     const batchSize = 1000;
     List<String> currentBatch = [];
     
@@ -519,6 +518,7 @@ class SpatialDb {
           return Point(lon, lat);
         }).toList();
         await addPointsToTable(batchPoints, poisTable);
+        pointsImported += batchPoints.length;
         currentBatch = []; // Clear the batch
       }
     }
@@ -532,7 +532,10 @@ class SpatialDb {
         return Point(lon, lat);
       }).toList();
       await addPointsToTable(batchPoints, poisTable);
+      pointsImported += batchPoints.length;
     }
+
+    debugPrint('Imported $pointsImported points');
   }
 }
 
