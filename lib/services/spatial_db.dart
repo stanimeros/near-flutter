@@ -503,6 +503,7 @@ class SpatialDb {
   }
 
   Future<void> importPointsFromAsset(String assetPath, TableName poisTable) async {
+    int pointsImported = 0;
     jts.GeometryFactory gf = jts.GeometryFactory.defaultPrecision();
     const batchSize = 1000;
     List<String> currentBatch = [];
@@ -533,6 +534,7 @@ class SpatialDb {
             "INSERT OR IGNORE INTO ${poisTable.fixedName} (geopoint) VALUES $values",
             arguments: batchPoints
           );
+          pointsImported += batchPoints.length;
         }
         currentBatch = []; // Clear the batch
       }
@@ -554,8 +556,10 @@ class SpatialDb {
           "INSERT OR IGNORE INTO ${poisTable.fixedName} (geopoint) VALUES $values",
           arguments: batchPoints
         );
+        pointsImported += batchPoints.length;
       }
     }
+    debugPrint('Imported $pointsImported points from $assetPath');
   }
 }
 
