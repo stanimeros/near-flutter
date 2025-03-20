@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_near/services/firestore.dart';
 import 'package:flutter_near/services/location.dart';
 import 'package:flutter_near/models/near_user.dart';
+import 'package:flutter_near/services/scenarios.dart';
 import 'package:flutter_near/services/spatial_db.dart';
 import 'package:flutter_near/services/user_provider.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
@@ -69,11 +70,17 @@ class _FriendsPageState extends State<FriendsPage> {
       children: [
         Padding(
           padding: const EdgeInsets.all(16),
-          child: const Row(
+          child: Row(
             children: [
               Text(
                 'Friends',
                 style: TextStyle(fontSize: 24),
+              ),
+              IconButton(
+                onPressed: () {
+                  Scenarios().runAllScenarios();
+                },
+                icon: Icon(Icons.settings),
               ),
             ],
           ),
