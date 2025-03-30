@@ -253,7 +253,7 @@ class SpatialDb {
     return list;
   }
 
-  Future<Point> getRandomKNN(int k, double lon, double lat, double bufferMeters, TableName poisTable, TableName cellsTable) async {
+  Future<List<Point>> getKNNs(int k, double lon, double lat, double bufferMeters, TableName poisTable, TableName cellsTable) async {
     List<Point> list = [];
 
     while (list.length < k) {
@@ -277,8 +277,7 @@ class SpatialDb {
       list.addAll(points);
     }
 
-    Random random = Random();
-    return list[random.nextInt(list.length)];
+    return list;
   }
 
   Future<BoundingBox> createBufferBoundingBox(double lon, double lat, double bufferMeters) async {

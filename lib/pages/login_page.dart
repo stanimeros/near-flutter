@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_near/services/auth.dart';
+import 'package:flutter_near/services/scenarios.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 
 class LoginPage extends StatefulWidget {
@@ -80,6 +81,12 @@ class _LoginPageState extends State<LoginPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  TextButton(
+                    onPressed: () {
+                      Scenarios().runAllScenarios();
+                    },
+                    child: Text('Run Scenarios'),
+                  ),
                   TextButton(
                     onPressed: () {
                       setState(() {

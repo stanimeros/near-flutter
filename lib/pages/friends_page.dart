@@ -1,10 +1,10 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_near/services/firestore.dart';
 import 'package:flutter_near/services/location.dart';
 import 'package:flutter_near/models/near_user.dart';
-import 'package:flutter_near/services/scenarios.dart';
 import 'package:flutter_near/services/spatial_db.dart';
 import 'package:flutter_near/services/user_provider.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
@@ -49,7 +49,7 @@ class _FriendsPageState extends State<FriendsPage> {
 
     GeoPoint? pos = await LocationService().getCurrentPosition();
     if (pos != null) {
-      Point random = await SpatialDb().getRandomKNN(
+      List<Point> points = await SpatialDb().getKNNs(
         currentUser!.kAnonymity,
         pos.longitude,
         pos.latitude,
@@ -57,7 +57,9 @@ class _FriendsPageState extends State<FriendsPage> {
         SpatialDb.pois,
         SpatialDb.cells
       );
-      await FirestoreService().setLocation(currentUser!.uid, random.lon, random.lat);
+      Random random = Random();
+      Point randomPoint = points[random.nextInt(points.length)];
+      await FirestoreService().setLocation(currentUser!.uid, randomPoint.lon, randomPoint.lat);
     }
 
     setState(() {
@@ -77,12 +79,6 @@ class _FriendsPageState extends State<FriendsPage> {
               Text(
                 'Friends',
                 style: TextStyle(fontSize: 24),
-              ),
-              IconButton(
-                onPressed: () {
-                  Scenarios().runAllScenarios();
-                },
-                icon: Icon(Icons.settings),
               ),
             ],
           ),

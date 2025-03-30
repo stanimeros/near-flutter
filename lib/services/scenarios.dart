@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:dart_hydrologis_db/dart_hydrologis_db.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_near/services/spatial_db.dart';
@@ -73,7 +75,16 @@ class Scenarios {
             
             // Run the specific method implementation
             for (Point point in points) {
-              await SpatialDb().getRandomKNN(
+              List<Point> nearestPoint = await SpatialDb().getKNNs(
+                1,
+                point.lon,
+                point.lat,
+                50,
+                poisTable,
+                cellsTable
+              );
+
+              List<Point> knnPoints = await SpatialDb().getKNNs(
                 k,
                 point.lon,
                 point.lat,
@@ -81,6 +92,9 @@ class Scenarios {
                 poisTable,
                 cellsTable
               );
+
+              Random random = Random();
+              knnPoints[random.nextInt(knnPoints.length)];
             }
             
             int endTime = DateTime.now().millisecondsSinceEpoch;
