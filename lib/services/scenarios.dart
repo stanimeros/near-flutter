@@ -86,8 +86,8 @@ class Scenarios {
 
               List<Point> knnPoints = await SpatialDb().getKNNs(
                 k,
-                point.lon,
-                point.lat,
+                nearestPoint.first.lon,
+                nearestPoint.first.lat,
                 50,
                 poisTable,
                 cellsTable
