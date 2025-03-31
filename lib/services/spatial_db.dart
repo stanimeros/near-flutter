@@ -260,8 +260,7 @@ class SpatialDb {
       debugPrint('Creating bbox with side ${bufferMeters*2}m');
       BoundingBox boundingBox = await createBufferBoundingBox(lon, lat, bufferMeters);
 
-      //TODO: Uncomment this when the cells are downloaded
-      // await downloadCellsInArea(boundingBox, poisTable, cellsTable);
+      await downloadCellsInArea(boundingBox, poisTable, cellsTable);
       List<Point> points = await getPointsInBoundingBox(boundingBox, poisTable);
 
       if (points.length < k) {
@@ -297,7 +296,6 @@ class SpatialDb {
   Future<List<Point>> downloadPointsFromServer(BoundingBox boundingBox, TableName poisTable) async {
     List<Point> downloadedPoints = [];
     try {
-      // Using http instead of https since port 5000 might not be configured for SSL
       final uri = Uri.https('snf-78417.ok-kno.grnetcloud.net', '/api/points', {
         'minLon': boundingBox.minLon.toStringAsFixed(6),
         'minLat': boundingBox.minLat.toStringAsFixed(6),
@@ -317,8 +315,13 @@ class SpatialDb {
       }
       
       final document = jsonDecode(response.body);
-      downloadedPoints = document['points'].map((node) {
-        return Point(node['longitude'] as double, node['latitude'] as double);
+      downloadedPoints = (document['points'] as List).map((node) {
+        return Point(
+          node['longitude'] as double, 
+          node['latitude'] as double,
+          // Optionally store the id if needed
+          // id: node['id'] as int,
+        );
       }).toList();
       
       if (downloadedPoints.isNotEmpty) {

@@ -55,4 +55,4 @@ flutter_launcher_icons:
   image_path: assets/logos/logo_1152px.png
   adaptive_icon_background: assets/logos/logo_1152px_adaptive.png
   adaptive_icon_foreground: assets/logos/logo_1152px_adaptive.png
-  min_sdk_android: 28
+  min_sdk_android: 26
