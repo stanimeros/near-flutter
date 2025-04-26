@@ -179,8 +179,8 @@ def main():
         for city in cities:
             city_id, city_name, city_geom_wkt = city
 
-            if city_name != "ΘΕΣΣΑΛΟΝΙΚΗΣ":
-                continue
+            # if city_name != "ΘΕΣΣΑΛΟΝΙΚΗΣ":
+            #     continue
 
             print(f"\nProcessing city {processed_count+1}/{len(cities)}: {city_name}")
             process_city(conn, city_id, city_name, city_geom_wkt)
