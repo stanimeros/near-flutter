@@ -3,8 +3,8 @@ from psycopg2.extras import DictCursor # type: ignore
 import time
 
 # DBSCAN parameters - final working values
-EPS = 0.00075
-MIN_POINTS = 4
+EPS = 0.0006
+MIN_POINTS = 50
 
 def connect_db():
     """Connect to the PostgreSQL database."""
@@ -178,6 +178,10 @@ def main():
         processed_count = 0
         for city in cities:
             city_id, city_name, city_geom_wkt = city
+
+            if city_name != "ΘΕΣΣΑΛΟΝΙΚΗΣ":
+                continue
+
             print(f"\nProcessing city {processed_count+1}/{len(cities)}: {city_name}")
             process_city(conn, city_id, city_name, city_geom_wkt)
             processed_count += 1
