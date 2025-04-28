@@ -30,12 +30,12 @@ def drop_and_create_tables(conn):
         
         # Drop cities table
         print("Dropping cities table...")
-        cur.execute("DROP TABLE IF EXISTS cities CASCADE")
+        cur.execute("DROP TABLE IF EXISTS city_polygons CASCADE")
         
         print("Creating cities table...")
         # Create cities table
         cur.execute("""
-        CREATE TABLE cities (
+        CREATE TABLE city_polygons (
             id SERIAL PRIMARY KEY,
             name VARCHAR(255),
             geom GEOMETRY(POLYGON, 4326)
@@ -44,7 +44,7 @@ def drop_and_create_tables(conn):
         
         # Create spatial index
         cur.execute("""
-        CREATE INDEX cities_geom_idx ON cities USING GIST (geom);
+        CREATE INDEX city_polygons_geom_idx ON city_polygons USING GIST (geom);
         """)
         
         conn.commit()
@@ -54,7 +54,7 @@ def drop_and_create_tables(conn):
         print(f"Error creating tables: {e}")
         conn.rollback()
 
-def insert_city(conn, city_name, city_geometry):
+def insert_city_polygon(conn, city_name, city_geometry):
     """Insert a city into the cities table."""
     try:
         cur = conn.cursor()
@@ -68,7 +68,7 @@ def insert_city(conn, city_name, city_geometry):
             return
         
         insert_query = sql.SQL("""
-        INSERT INTO cities (name, geom)
+        INSERT INTO city_polygons (name, geom)
         VALUES (%s, ST_SetSRID(ST_GeomFromText(%s), 4326))
         """)
         
@@ -79,7 +79,7 @@ def insert_city(conn, city_name, city_geometry):
         print(f"Error inserting city {city_name}: {e}")
         conn.rollback()
 
-def add_cities_to_db():
+def add_city_polygons_to_db():
     """Add cities from the GeoJSON file to the database."""
     geojson_file = 'otas.geojson'
     start_time = time.time()
@@ -96,7 +96,7 @@ def add_cities_to_db():
         drop_and_create_tables(conn)
         
         # Insert each city into the database
-        print("Starting city import...")
+        print("Starting city polygon import...")
         processed_count = 0
         
         for _, city_row in cities_gdf.iterrows():
@@ -104,14 +104,14 @@ def add_cities_to_db():
             city_geometry = city_row['geometry']
             
             if isinstance(city_geometry, Polygon):
-                insert_city(conn, city_name, city_geometry)
+                insert_city_polygon(conn, city_name, city_geometry)
                 processed_count += 1
             elif isinstance(city_geometry, MultiPolygon):
                 for polygon in city_geometry.geoms:
-                    insert_city(conn, city_name, polygon)
+                    insert_city_polygon(conn, city_name, polygon)
                     processed_count += 1
             else:
-                print(f"Skipping city {city_name} because it's not a Polygon or MultiPolygon: {type(city_geometry)}")
+                print(f"Skipping city {city_name} because it's not a Polygon or MultiPolygon but {type(city_geometry)}")
             
             # Show progress every 10 cities
             if processed_count % 10 == 0:
@@ -122,10 +122,10 @@ def add_cities_to_db():
         
         elapsed_time = time.time() - start_time
         print(f"Import completed in {elapsed_time:.2f} seconds")
-        print(f"Summary: {processed_count} cities imported")
+        print(f"Summary: {processed_count} city polygons imported")
         
     except Exception as e:
-        print(f"Error in add_cities_to_db: {e}")
+        print(f"Error in add_city_polygons_to_db: {e}")
 
 if __name__ == "__main__":
-    add_cities_to_db()
+    add_city_polygons_to_db()
