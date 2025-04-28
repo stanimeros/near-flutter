@@ -76,14 +76,14 @@ def process_city(conn, city_id, city_name, city_geom_wkt):
         ),
         contained_points AS (
             SELECT p.id, p.geom
-            FROM osm_points p
+            FROM osm_points p, c
             WHERE
               p.geom && c.geom AND ST_Contains(c.geom, p.geom)
         )
         SELECT COUNT(*)
         FROM contained_points
         """
-        cur.execute(check_points_query, (city_geom_wkt))
+        cur.execute(check_points_query, (city_geom_wkt,))
         point_count = cur.fetchone()[0]
         
         if point_count == 0:
@@ -101,7 +101,7 @@ def process_city(conn, city_id, city_name, city_geom_wkt):
         ),
         contained_points AS (
             SELECT p.id, p.geom
-            FROM osm_points p
+            FROM osm_points p, c
             WHERE
               p.geom && c.geom AND ST_Contains(c.geom, p.geom)
         ),
