@@ -3,8 +3,8 @@ from psycopg2.extras import DictCursor # type: ignore
 import time
 
 # DBSCAN parameters - final working values
-EPS = 0.0006
-MIN_POINTS = 50
+EPS = 0.0005
+MIN_POINTS = 40
 
 def connect_db():
     """Connect to the PostgreSQL database."""
@@ -71,18 +71,19 @@ def process_city(conn, city_id, city_name, city_geom_wkt):
         
         # First, check if there are any points in this city
         check_points_query = """
-        WITH c AS (
-            SELECT ST_GeomFromText(%s, 4326) AS geom
-        ),
-        contained_points AS (
-            SELECT p.id, p.geom
-            FROM osm_points p, c
-            WHERE
-              p.geom && c.geom AND ST_Contains(c.geom, p.geom)
-        )
-        SELECT COUNT(*)
-        FROM contained_points
+            WITH c AS (
+                SELECT ST_GeomFromText(%s, 4326) AS geom
+            ),
+            contained_points AS (
+                SELECT p.id, p.geom
+                FROM osm_points p, c
+                WHERE
+                p.geom && c.geom AND ST_Intersects(c.geom, p.geom)
+            )
+            SELECT COUNT(*)
+            FROM contained_points
         """
+
         cur.execute(check_points_query, (city_geom_wkt,))
         point_count = cur.fetchone()[0]
         
@@ -103,7 +104,7 @@ def process_city(conn, city_id, city_name, city_geom_wkt):
             SELECT p.id, p.geom
             FROM osm_points p, c
             WHERE
-              p.geom && c.geom AND ST_Contains(c.geom, p.geom)
+              p.geom && c.geom AND ST_Intersects(c.geom, p.geom)
         ),
         clustered AS (
             SELECT 
