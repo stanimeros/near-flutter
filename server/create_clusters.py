@@ -27,6 +27,7 @@ def drop_and_create_table(conn):
         cur.execute("""
         CREATE TABLE poi_clusters (
             id SERIAL PRIMARY KEY,
+            city_id INTEGER REFERENCES cities(id),
             cluster_id INTEGER,
             point_count INTEGER,
             geom GEOMETRY(POINT, 4326),
@@ -57,13 +58,13 @@ def check_database(conn):
     print(f"Total points: {total_points}")
     
     # Check total cities
-    cur.execute("SELECT COUNT(*) FROM city_polygons")
+    cur.execute("SELECT COUNT(*) FROM cities")
     total_cities = cur.fetchone()[0]
     print(f"Total cities: {total_cities}")
     
     cur.close()
 
-def process_city_union(conn, city_name, city_geom_wkt):
+def process_city(conn, city_id, city_name, city_geom_wkt):
     """Process clustering for a single city."""
     try:
         cur = conn.cursor()
@@ -107,13 +108,13 @@ def process_city_union(conn, city_name, city_geom_wkt):
             WHERE cluster_id IS NOT NULL
             GROUP BY cluster_id
         )
-        INSERT INTO poi_clusters (cluster_id, point_count, geom)
-        SELECT cluster_id, point_count, center
+        INSERT INTO poi_clusters (city_id, cluster_id, point_count, geom)
+        SELECT %s, cluster_id, point_count, center
         FROM final
         RETURNING cluster_id, point_count;
         """
         
-        cur.execute(clustering_query, (city_geom_wkt, EPS, MIN_POINTS))
+        cur.execute(clustering_query, (city_geom_wkt, EPS, MIN_POINTS, city_id))
         clusters = cur.fetchall()
         
         conn.commit()
@@ -148,30 +149,29 @@ def main():
         # Get all unique city names
         cur = conn.cursor(cursor_factory=DictCursor)
         cur.execute("""
-            SELECT name, ST_AsText(ST_Union(geom)) as geom_wkt
-            FROM city_polygons
+            SELECT name, id, ST_AsText(geom) as geom_wkt
+            FROM cities
             WHERE geom IS NOT NULL
-            GROUP BY name
             ORDER BY name
         """)
         cities = cur.fetchall()
         
         if not cities:
-            print("No city polygons found in database!")
+            print("No cities found in database!")
             return
         
-        print(f"Found {len(cities)} unique city names to process")
+        print(f"Found {len(cities)} cities to process")
         
         # Process each city
         processed_count = 0
         for city in cities:
-            city_name, city_geom_wkt = city['name'], city['geom_wkt']
+            city_name, city_id, city_geom_wkt = city['name'], city['id'], city['geom_wkt']
 
             # if city_name != "ΘΕΣΣΑΛΟΝΙΚΗΣ":
             #     continue
 
             print(f"\nProcessing city {processed_count+1}/{len(cities)}: {city_name}")
-            process_city_union(conn, city_name, city_geom_wkt)
+            process_city(conn, city_id, city_name, city_geom_wkt)
             processed_count += 1
             
             # Show progress every 10 cities
