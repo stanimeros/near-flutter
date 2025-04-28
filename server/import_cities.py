@@ -1,6 +1,6 @@
 import geopandas as gpd # type: ignore
 import psycopg2 # type: ignore
-from shapely.geometry import Polygon # type: ignore
+from shapely.geometry import Polygon, MultiPolygon # type: ignore
 from shapely import wkt # type: ignore
 from shapely.ops import transform # type: ignore
 from psycopg2 import sql # type: ignore
@@ -37,7 +37,7 @@ def drop_and_create_tables(conn):
         cur.execute("""
         CREATE TABLE cities (
             id SERIAL PRIMARY KEY,
-            name VARCHAR(255) UNIQUE,
+            name VARCHAR(255),
             geom GEOMETRY(POLYGON, 4326)
         );
         """)
@@ -70,11 +70,9 @@ def insert_city(conn, city_name, city_geometry):
         insert_query = sql.SQL("""
         INSERT INTO cities (name, geom)
         VALUES (%s, ST_SetSRID(ST_GeomFromText(%s), 4326))
-        ON CONFLICT (name) DO UPDATE 
-        SET geom = ST_SetSRID(ST_GeomFromText(%s), 4326)
         """)
         
-        cur.execute(insert_query, (city_name, city_wkt, city_wkt))
+        cur.execute(insert_query, (city_name, city_wkt))
         conn.commit()
         cur.close()
     except Exception as e:
@@ -100,7 +98,6 @@ def add_cities_to_db():
         # Insert each city into the database
         print("Starting city import...")
         processed_count = 0
-        skipped_count = 0
         
         for _, city_row in cities_gdf.iterrows():
             city_name = city_row['OTA_LEKTIK']
@@ -109,19 +106,23 @@ def add_cities_to_db():
             if isinstance(city_geometry, Polygon):
                 insert_city(conn, city_name, city_geometry)
                 processed_count += 1
-                
-                # Show progress every 10 cities
-                if processed_count % 10 == 0:
-                    print(f"Progress: {processed_count}/{len(cities_gdf)} cities processed")
+            elif isinstance(city_geometry, MultiPolygon):
+                for polygon in city_geometry.geoms:
+                    insert_city(conn, city_name, polygon)
+                    processed_count += 1
             else:
-                skipped_count += 1
+                print(f"Skipping city {city_name} because it's not a Polygon or MultiPolygon: {type(city_geometry)}")
+            
+            # Show progress every 10 cities
+            if processed_count % 10 == 0:
+                print(f"Progress: {processed_count}/{len(cities_gdf)} cities processed")
         
         # Close DB connection
         conn.close()
         
         elapsed_time = time.time() - start_time
         print(f"Import completed in {elapsed_time:.2f} seconds")
-        print(f"Summary: {processed_count} cities imported, {skipped_count} cities skipped")
+        print(f"Summary: {processed_count} cities imported")
         
     except Exception as e:
         print(f"Error in add_cities_to_db: {e}")
