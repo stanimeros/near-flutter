@@ -1,5 +1,10 @@
+import geopandas as gpd # type: ignore
 import psycopg2 # type: ignore
-from psycopg2.extras import DictCursor # type: ignore
+from shapely.geometry import Polygon, MultiPolygon # type: ignore
+from shapely.ops import unary_union, transform # type: ignore
+from shapely import wkt # type: ignore
+from psycopg2 import sql # type: ignore
+import pyproj # type: ignore
 import time
 
 # DBSCAN parameters - final working values
@@ -13,192 +18,96 @@ def connect_db():
     print("Connected to database")
     return conn
 
-def drop_and_create_table(conn):
-    """Drop and recreate the poi_clusters table."""
+def to_wgs84(geometry):
+    project = pyproj.Transformer.from_crs('EPSG:2100', 'EPSG:4326', always_xy=True)
+    return transform(project.transform, geometry)
+
+def drop_and_create_tables(conn):
     try:
         cur = conn.cursor()
-        
-        # Drop the table if it exists
         print("Dropping poi_clusters table...")
         cur.execute("DROP TABLE IF EXISTS poi_clusters CASCADE")
-        
-        # Create poi_clusters table
-        print("Creating poi_clusters table...")
+        print("Dropping cities table...")
+        cur.execute("DROP TABLE IF EXISTS cities CASCADE")
+        print("Creating cities table...")
         cur.execute("""
-        CREATE TABLE poi_clusters (
+        CREATE TABLE cities (
             id SERIAL PRIMARY KEY,
-            city_id INTEGER REFERENCES cities(id),
-            cluster_id INTEGER,
-            point_count INTEGER,
-            geom GEOMETRY(POINT, 4326),
-            created_at TIMESTAMP DEFAULT NOW()
+            name VARCHAR(255),
+            geom GEOMETRY(POLYGON, 4326)
         );
         """)
-        
-        # Create spatial index
         cur.execute("""
-        CREATE INDEX poi_clusters_geom_idx ON poi_clusters USING GIST (geom);
+        CREATE INDEX cities_geom_idx ON cities USING GIST (geom);
         """)
-        
         conn.commit()
         cur.close()
-        print("Tables recreated successfully")
+        print("Tables created")
     except Exception as e:
         print(f"Error creating tables: {e}")
         conn.rollback()
 
-def check_database(conn):
-    """Check if there are any points in the database."""
-    print("Checking database state...")
-    cur = conn.cursor()
-    
-    # Check total points
-    cur.execute("SELECT COUNT(*) FROM osm_points")
-    total_points = cur.fetchone()[0]
-    print(f"Total points: {total_points}")
-    
-    # Check total cities
-    cur.execute("SELECT COUNT(*) FROM cities")
-    total_cities = cur.fetchone()[0]
-    print(f"Total cities: {total_cities}")
-    
-    cur.close()
-
-def process_city(conn, city_id, city_name, city_geom_wkt):
-    """Process clustering for a single city."""
+def insert_city(conn, city_name, city_geometry):
     try:
         cur = conn.cursor()
-        
-        # First, check if there are any points in this city
-        check_points_query = """
-        SELECT COUNT(*)
-        FROM osm_points p
-        WHERE ST_Contains(ST_GeomFromText(%s, 4326), p.geom)
-        """
-        cur.execute(check_points_query, (city_geom_wkt,))
-        point_count = cur.fetchone()[0]
-        
-        if point_count == 0:
-            print(f"No points found in {city_name}")
+        try:
+            city_geometry_wgs84 = to_wgs84(city_geometry)
+            city_wkt = wkt.dumps(city_geometry_wgs84)
+        except Exception as e:
+            print(f"Error transforming {city_name}: {e}")
             return
-        
-        print(f"Found {point_count} points in {city_name}")
-        
-        # Perform DBSCAN clustering
-        print(f"Clustering {city_name}...")
-        
-        clustering_query = """
-        contained_points AS (
-            SELECT p.id, p.geom
-            FROM osm_points p
-            WHERE ST_Contains(ST_GeomFromText(%s, 4326), p.geom)
-        ),
-        clustered AS (
-            SELECT 
-                ST_ClusterDBSCAN(geom, eps := %s, minpoints := %s) OVER () AS cluster_id,
-                geom
-            FROM contained_points
-        ),
-        final AS (
-            SELECT 
-                cluster_id,
-                ST_Centroid(ST_Collect(geom)) AS center,
-                COUNT(*) AS point_count
-            FROM clustered
-            WHERE cluster_id IS NOT NULL
-            GROUP BY cluster_id
-        )
-        INSERT INTO poi_clusters (city_id, cluster_id, point_count, geom)
-        SELECT %s, cluster_id, point_count, center
-        FROM final
-        RETURNING cluster_id, point_count;
-        """
-        
-        cur.execute(clustering_query, (city_geom_wkt, EPS, MIN_POINTS, city_id))
-        clusters = cur.fetchall()
-        
+        insert_query = sql.SQL("""
+        INSERT INTO cities (name, geom)
+        VALUES (%s, ST_SetSRID(ST_GeomFromText(%s), 4326))
+        """)
+        cur.execute(insert_query, (city_name, city_wkt))
         conn.commit()
-        
-        if clusters:
-            total_clusters = len(clusters)
-            total_points = sum(cluster[1] for cluster in clusters)
-            print(f"Created {total_clusters} clusters with {total_points} points for {city_name}")
-        else:
-            print(f"No clusters formed for {city_name}")
-        
         cur.close()
-        
     except Exception as e:
-        print(f"Error processing {city_name}: {e}")
+        print(f"Error inserting city {city_name}: {e}")
         conn.rollback()
 
-def main():
+def add_cities_to_db():
+    geojson_file = 'otas.geojson'
     start_time = time.time()
-    print(f"Starting clustering process")
-    print(f"Parameters: EPS={EPS}, MIN_POINTS={MIN_POINTS}")
-    
     try:
+        print(f"Reading GeoJSON file: {geojson_file}")
+        cities_gdf = gpd.read_file(geojson_file)
+        print(f"Found {len(cities_gdf)} cities in GeoJSON")
         conn = connect_db()
-        
-        # Always recreate the table
-        drop_and_create_table(conn)
-        
-        # Check database state
-        check_database(conn)
-        
-        # Get all unique city names
-        cur = conn.cursor(cursor_factory=DictCursor)
-        cur.execute("""
-            SELECT name, id, ST_AsText(geom) as geom_wkt
-            FROM cities
-            WHERE geom IS NOT NULL
-            ORDER BY name
-        """)
-        cities = cur.fetchall()
-        
-        if not cities:
-            print("No cities found in database!")
-            return
-        
-        print(f"Found {len(cities)} cities to process")
-        
-        # Process each city
+        drop_and_create_tables(conn)
+        print("Starting city polygon import...")
+
+        # Group all polygons by city name
+        cities = {}
+        for _, city_row in cities_gdf.iterrows():
+            city_name = city_row['OTA_LEKTIK']
+            city_geometry = city_row['geometry']
+            if city_name not in cities:
+                cities[city_name] = []
+            if isinstance(city_geometry, Polygon):
+                cities[city_name].append(city_geometry)
+            elif isinstance(city_geometry, MultiPolygon):
+                cities[city_name].extend(list(city_geometry.geoms))
+            else:
+                print(f"Skipping city {city_name} because it's not a Polygon or MultiPolygon but {type(city_geometry)}")
+
         processed_count = 0
-        for city in cities:
-            city_name, city_id, city_geom_wkt = city['name'], city['id'], city['geom_wkt']
-
-            # if city_name != "ΘΕΣΣΑΛΟΝΙΚΗΣ":
-            #     continue
-
-            print(f"\nProcessing city {processed_count+1}/{len(cities)}: {city_name}")
-            process_city(conn, city_id, city_name, city_geom_wkt)
+        for city_name, polygons in cities.items():
+            if not polygons:
+                continue
+            unioned = unary_union(polygons)
+            insert_city(conn, city_name, unioned)
             processed_count += 1
-            
-            # Show progress every 10 cities
             if processed_count % 10 == 0:
-                print(f"Progress: {processed_count}/{len(cities)} cities processed")
-        
-        # Get final statistics
-        cur.execute("SELECT COUNT(*) FROM poi_clusters")
-        total_clusters = cur.fetchone()[0]
-        
-        cur.execute("SELECT SUM(point_count) FROM poi_clusters")
-        total_clustered_points = cur.fetchone()[0] or 0
-        
+                print(f"Progress: {processed_count}/{len(cities)} city names processed")
+
+        conn.close()
         elapsed_time = time.time() - start_time
-        print("\n=== Summary ===")
-        print(f"Time: {elapsed_time:.2f} seconds")
-        print(f"Cities processed: {processed_count}")
-        print(f"Total clusters: {total_clusters}")
-        print(f"Total points in clusters: {total_clustered_points}")
-        
+        print(f"Import completed in {elapsed_time:.2f} seconds")
+        print(f"Summary: {processed_count} cities imported")
     except Exception as e:
-        print(f"Error in main process: {e}")
-    
-    finally:
-        if 'conn' in locals():
-            conn.close()
-            print("Database connection closed")
+        print(f"Error in add_cities_to_db: {e}")
 
 if __name__ == "__main__":
-    main()
+    add_cities_to_db()
