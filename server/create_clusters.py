@@ -71,11 +71,19 @@ def process_city(conn, city_id, city_name, city_geom_wkt):
         
         # First, check if there are any points in this city
         check_points_query = """
+        WITH c AS (
+            SELECT ST_GeomFromText(%s, 4326) AS geom
+        ),
+        contained_points AS (
+            SELECT p.id, p.geom
+            FROM osm_points p
+            WHERE
+              p.geom && c.geom AND ST_Contains(c.geom, p.geom)
+        )
         SELECT COUNT(*)
-        FROM osm_points p
-        WHERE ST_Contains(ST_GeomFromText(%s, 4326), p.geom)
+        FROM contained_points
         """
-        cur.execute(check_points_query, (city_geom_wkt,))
+        cur.execute(check_points_query, (city_geom_wkt))
         point_count = cur.fetchone()[0]
         
         if point_count == 0:
@@ -88,10 +96,14 @@ def process_city(conn, city_id, city_name, city_geom_wkt):
         print(f"Clustering {city_name}...")
         
         clustering_query = """
+        WITH c AS (
+            SELECT ST_GeomFromText(%s, 4326) AS geom
+        ),
         contained_points AS (
             SELECT p.id, p.geom
             FROM osm_points p
-            WHERE ST_Contains(ST_GeomFromText(%s, 4326), p.geom)
+            WHERE
+              p.geom && c.geom AND ST_Contains(c.geom, p.geom)
         ),
         clustered AS (
             SELECT 
