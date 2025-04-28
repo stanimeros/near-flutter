@@ -30,7 +30,7 @@ def drop_and_create_tables(conn):
         CREATE TABLE cities (
             id SERIAL PRIMARY KEY,
             name VARCHAR(255),
-            geom GEOMETRY(POLYGON, 4326)
+            geom GEOMETRY(MultiPolygon, 4326)
         );
         """)
         cur.execute("""
@@ -72,7 +72,7 @@ def add_cities_to_db():
         print(f"Found {len(cities_gdf)} cities in GeoJSON")
         conn = connect_db()
         drop_and_create_tables(conn)
-        print("Starting city polygon import...")
+        print("Starting city import...")
 
         # Group all polygons by city name
         cities = {}
