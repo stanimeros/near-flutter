@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_near/services/spatial_db.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:battery_plus/battery_plus.dart';
+import 'package:system_resources/system_resources.dart';
 
 class DetourRatioTest {
     // Detour Ratio Test Data
@@ -44,6 +46,41 @@ class DetourRatioTest {
         return (dUserMeeting + dContactMeeting) / dUserContact;
     }
 
+    static Future<Map<String, double>> getSystemInformation() async {
+        try {
+            // Get CPU usage
+            double cpuLoadAvg = 0.0;
+            double memoryUsage = 0.0;
+            try {
+                cpuLoadAvg = SystemResources.cpuLoadAvg() * 100;
+                memoryUsage = SystemResources.memUsage() * 100;
+            } catch (e) {
+                debugPrint('Could not get CPU usage: $e');
+            }
+
+            // Get battery level
+            double batteryLevel = 0.0;
+            try {
+                final battery = Battery();
+                batteryLevel = (await battery.batteryLevel).toDouble();
+            } catch (e) {
+                debugPrint('Could not get battery level: $e');
+            }
+
+            return {
+                'cpu_load_avg_pct': cpuLoadAvg,
+                'memory_usage_pct': memoryUsage,
+                'battery_level_pct': batteryLevel,
+            };
+        } catch (e) {
+            debugPrint('Error getting system information: $e');
+            return {
+                'cpu_usage_pct': 0.0,
+                'battery_level_pct': 0.0,
+            };
+        }
+    }
+
     Future<void> runDetourRatioTest() async {
         debugPrint('Starting detour ratio tests...');
         
@@ -53,7 +90,7 @@ class DetourRatioTest {
 
         // Initialize the spatial database
         debugPrint('Initializing spatial database...');
-        await SpatialDb().openDbFileWithPath('detour_ratio_test.db');
+        await SpatialDb().openDbFile('detour_ratio_test.db');
         await SpatialDb().createSpatialTable(SpatialDb.pois);
         await SpatialDb().createCellsTable(SpatialDb.cells);
 
@@ -63,16 +100,18 @@ class DetourRatioTest {
             for (final k in kValues) {
                 debugPrint('\nTesting with k=$k');
                 
-                // Run 5 tests with different point combinations
-                for (int i = 0; i < 5; i++) {
-                    final userIdx = i;
-                    final contactIdx = (i + 1) % (city['test_points'] as List).length;
+                // Simulate 2 users meeting 5 times from different locations
+                // User A and User B choose 5 different meeting points
+                for (int meetingAttempt = 0; meetingAttempt < 5; meetingAttempt++) {
+                    // Use different starting points for each meeting attempt
+                    final userAIdx = meetingAttempt % (city['test_points'] as List).length;
+                    final userBIdx = (meetingAttempt + 1) % (city['test_points'] as List).length;
                     
-                    debugPrint('  Test ${i + 1}: Points ${userIdx + 1} and ${contactIdx + 1}');
+                    debugPrint('  Meeting ${meetingAttempt + 1}: User A at point ${userAIdx + 1}, User B at point ${userBIdx + 1}');
                     try {
-                        final result = await runDetourTest(city, k, userIdx, contactIdx);
+                        final result = await runDetourTest(city, k, userAIdx, userBIdx, meetingAttempt);
                         results.add(result);
-                        debugPrint('    Detour ratio: ${result['detour_ratio'].toStringAsFixed(2)}');
+                        debugPrint('    Detour ratio: ${result['meeting_suggestion']['detour_ratio'].toStringAsFixed(2)}');
                     } catch (e) {
                         debugPrint('    Error: $e');
                     }
@@ -93,12 +132,12 @@ class DetourRatioTest {
             debugPrint('\n${city['name']}:');
             for (final k in kValues) {
                 final cityResults = results.where((r) => 
-                    r['city_id'] == city['name'] && r['k_value'] == k
+                    r['meeting_suggestion']['city_id'] == city['name'] && r['k_value'] == k
                 ).toList();
                 
                 if (cityResults.isNotEmpty) {
                     final avgDetourRatio = cityResults
-                        .map((r) => r['detour_ratio'] as double)
+                        .map((r) => r['meeting_suggestion']['detour_ratio'] as double)
                         .reduce((a, b) => a + b) / cityResults.length;
                     
                     debugPrint('  k=$k: Average detour ratio = ${avgDetourRatio.toStringAsFixed(2)}');
@@ -110,77 +149,81 @@ class DetourRatioTest {
     Future<Map<String, dynamic>> runDetourTest(
         Map<String, dynamic> city,
         int k,
-        int userIdx,
-        int contactIdx,
+        int userAIdx,
+        int userBIdx,
+        int meetingAttempt,
     ) async {
-        // Setup test points
-        final userPoint = city['test_points'][userIdx];
-        final contactPoint = city['test_points'][contactIdx];
+        // Setup test points for User A and User B
+        final userAPoint = city['test_points'][userAIdx];
+        final userBPoint = city['test_points'][userBIdx];
         
         // Create Point objects for spatial database
-        final userSpatialPoint = Point(userPoint['lon'], userPoint['lat']);
+        final userASpatialPoint = Point(userAPoint['lon'], userAPoint['lat']);
         
-        // Get KNN points for user
+        // Get KNN points for User A (as in friends_page.dart)
         final startTime = DateTime.now();
-        final userKNNs = await SpatialDb().getKNNs(
+        final userAKNNs = await SpatialDb().getKNNs(
             k,
-            userSpatialPoint.lon,
-            userSpatialPoint.lat,
-            1000, // Start with 1km radius
+            userASpatialPoint.lon,
+            userASpatialPoint.lat,
+            50, // Use same radius as friends_page.dart
             SpatialDb.pois,
             SpatialDb.cells,
         );
         final endTime = DateTime.now();
         
-        if (userKNNs.isEmpty) {
-            throw Exception('No KNN points found for user');
+        // Get system information
+        final systemInfo = await getSystemInformation();
+        
+        if (userAKNNs.isEmpty) {
+            throw Exception('No KNN points found for User A');
         }
         
-        debugPrint('Found ${userKNNs.length} points (requested $k)');
-        if (userKNNs.length < k) {
-            debugPrint('Warning: Only found ${userKNNs.length} points (requested $k) - area may be too sparse');
-        }
-        
-        // Select a random point from KNNs as the meeting point
+        // Select a random point from KNNs as the meeting point (same logic as friends_page.dart)
         final random = Random();
-        final meetingPoint = userKNNs[random.nextInt(userKNNs.length)];
+        final meetingPoint = userAKNNs[random.nextInt(userAKNNs.length)];
         
-        // Calculate detour ratio
+        // Calculate detour ratio: (d(A,Σ)+d(B,Σ)) / d(A,B)
         final detourRatio = calculateDetourRatio(
-            userPoint['lat'], userPoint['lon'],
-            contactPoint['lat'], contactPoint['lon'],
+            userAPoint['lat'], userAPoint['lon'],
+            userBPoint['lat'], userBPoint['lon'],
+            meetingPoint.lat, meetingPoint.lon,
+        );
+        
+        // Calculate distances
+        final trueDistanceAB = Geolocator.distanceBetween(
+            userAPoint['lat'], userAPoint['lon'],
+            userBPoint['lat'], userBPoint['lon'],
+        );
+        final nearDistanceA = Geolocator.distanceBetween(
+            userAPoint['lat'], userAPoint['lon'],
             meetingPoint.lat, meetingPoint.lon,
         );
         
         return {
             'timestamp': '${DateTime.now().toUtc().toIso8601String()}Z',
-            'user_id': 'U${userIdx + 1}',
-            'contact_ids': ['U${contactIdx + 1}'],
-            'true_location': {'lat': userPoint['lat'], 'lon': userPoint['lon']},
+            'user_id': 'U${userAIdx + 1}',
+            'contact_ids': ['U${userBIdx + 1}'],
+            'true_location': {'lat': userAPoint['lat'], 'lon': userAPoint['lon']},
             'generated_spoi': {'lat': meetingPoint.lat, 'lon': meetingPoint.lon},
-            'candidate_spois': userKNNs.take(k).map((p) => {'lat': p.lat, 'lon': p.lon}).toList(),
+            'candidate_spois': userAKNNs.take(k).map((p) => {'lat': p.lat, 'lon': p.lon}).toList(),
             'k_value': k,
             'seed_info': '${DateTime.now().toUtc().toIso8601String()}Z',
             'system_information': {
                 'network_latency_ms': endTime.difference(startTime).inMilliseconds.toDouble(),
-                'cpu_usage_pct': 0.0,
-                'battery_level_pct': 0.0,
+                'cpu_load_avg_pct': systemInfo['cpu_load_avg_pct']!,
+                'memory_usage_pct': systemInfo['memory_usage_pct']!,
+                'battery_level_pct': systemInfo['battery_level_pct']!,
             },
             'returned_contacts': [{
-                'contact_id': 'U${contactIdx + 1}',
-                'true_distance_m': Geolocator.distanceBetween(
-                    userPoint['lat'], userPoint['lon'],
-                    contactPoint['lat'], contactPoint['lon'],
-                ),
-                'near_distance_m': Geolocator.distanceBetween(
-                    userPoint['lat'], userPoint['lon'],
-                    meetingPoint.lat, meetingPoint.lon,
-                ),
+                'contact_id': 'U${userBIdx + 1}',
+                'true_distance_m': trueDistanceAB,
+                'near_distance_m': nearDistanceA,
                 'reported_rank': 1,
             }],
             'meeting_suggestion': {
                 'city_id': city['name'],
-                'cluster_id': 1,
+                'cluster_id': meetingAttempt + 1,
                 'meeting_point': {'lat': meetingPoint.lat, 'lon': meetingPoint.lon},
                 'accepted': true,
                 'detour_ratio': detourRatio,

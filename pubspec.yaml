@@ -35,6 +35,8 @@ dependencies:
   action_slider: ^0.7.0
   lucide_icons_flutter: ^2.0.1
   intl: ^0.20.2
+  battery_plus: ^6.2.3
+  system_resources: ^1.6.0
   
 dev_dependencies:
   flutter_test:
