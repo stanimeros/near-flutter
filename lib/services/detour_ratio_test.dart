@@ -1,13 +1,14 @@
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_near/services/spatial_db.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:resource_monitor/resource_monitor.dart';
+import 'package:share_plus/share_plus.dart';
 
 class DetourRatioTest {
     // Detour Ratio Test Data
-    
     static const Map<String, dynamic> thessaloniki = {
         "name": "Thessaloniki",
         "center": {"lat": 40.6401, "lon": 22.9444},
@@ -45,34 +46,6 @@ class DetourRatioTest {
         return (dUserMeeting + dContactMeeting) / dUserContact;
     }
 
-    static Future<Map<String, double>> getSystemInformation() async {
-        try {
-          final data = await ResourceMonitor.getResourceUsage;
-
-
-            // Get battery level
-            double batteryLevel = 0.0;
-            try {
-                final battery = Battery();
-                batteryLevel = (await battery.batteryLevel).toDouble();
-            } catch (e) {
-                debugPrint('Could not get battery level: $e');
-            }
-
-            return {
-                'cpu_usage_pct': data.cpuInUseByApp,
-                'memory_usage_pct': data.memoryInUseByApp,
-                'battery_level_pct': batteryLevel,
-            };
-        } catch (e) {
-            debugPrint('Error getting system information: $e');
-            return {
-                'cpu_usage_pct': 0.0,
-                'battery_level_pct': 0.0,
-            };
-        }
-    }
-
     Future<void> runDetourRatioTest() async {
         debugPrint('Starting detour ratio tests...');
         
@@ -90,10 +63,11 @@ class DetourRatioTest {
                 // User A and User B choose 5 different meeting points
                 for (int meetingAttempt = 0; meetingAttempt < 5; meetingAttempt++) {
                     // Use different starting points for each meeting attempt
+                    // User A and User B are always the same users (U1 and U2), but at different locations
                     final userAIdx = meetingAttempt % (city['test_points'] as List).length;
                     final userBIdx = (meetingAttempt + 1) % (city['test_points'] as List).length;
                     
-                    debugPrint('Meeting ${meetingAttempt + 1}: User A at point ${userAIdx + 1}, User B at point ${userBIdx + 1}');
+                    debugPrint('Meeting ${meetingAttempt + 1}: User A (U1) at point ${userAIdx + 1}, User B (U2) at point ${userBIdx + 1}');
                     try {
                         final result = await runDetourTest(city, k, userAIdx, userBIdx, meetingAttempt);
                         results.add(result);
@@ -105,12 +79,7 @@ class DetourRatioTest {
             }
         }
 
-        // Save results to JSON file
-        // final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.')[0];
-        // final filename = 'test_results_$timestamp.json';
-        // final file = File(filename);
-        // await file.writeAsString(jsonEncode(results));
-        // debugPrint('\nResults saved to $filename');
+        await shareResults(results);
         
         // Print summary statistics
         debugPrint('\n=== Summary Statistics ===');
@@ -158,9 +127,6 @@ class DetourRatioTest {
         );
         final endTime = DateTime.now();
         
-        // Get system information
-        final systemInfo = await getSystemInformation();
-        
         if (userAKNNs.isEmpty) {
             throw Exception('No KNN points found for User A');
         }
@@ -185,24 +151,27 @@ class DetourRatioTest {
             userAPoint['lat'], userAPoint['lon'],
             meetingPoint.lat, meetingPoint.lon,
         );
+
+        final data = await ResourceMonitor.getResourceUsage;
+        final batteryLevel = (await Battery().batteryLevel).toDouble();
         
         return {
-            'timestamp': '${DateTime.now().toUtc().toIso8601String()}Z',
-            'user_id': 'U${userAIdx + 1}',
-            'contact_ids': ['U${userBIdx + 1}'],
+            'timestamp': DateTime.now().toUtc().toIso8601String(),
+            'user_id': 'U1',
+            'contact_ids': ['U2'],
             'true_location': {'lat': userAPoint['lat'], 'lon': userAPoint['lon']},
             'generated_spoi': {'lat': meetingPoint.lat, 'lon': meetingPoint.lon},
-            'candidate_spois': userAKNNs.take(k).map((p) => {'lat': p.lat, 'lon': p.lon}).toList(),
+            'candidate_spois': userAKNNs.map((p) => {'lat': p.lat, 'lon': p.lon}).toList(),
             'k_value': k,
-            'seed_info': '${DateTime.now().toUtc().toIso8601String()}Z',
+            'seed_info': DateTime.now().toUtc().toIso8601String(),
             'system_information': {
                 'network_latency_ms': endTime.difference(startTime).inMilliseconds.toDouble(),
-                'cpu_usage_pct': systemInfo['cpu_usage_pct']!,
-                'memory_usage_pct': systemInfo['memory_usage_pct']!,
-                'battery_level_pct': systemInfo['battery_level_pct']!,
+                'cpu_usage_pct': data.cpuInUseByApp,
+                'battery_level_pct': batteryLevel,
+                'memory_usage': formatBytes(data.memoryInUseByApp.toInt(), 2),
             },
             'returned_contacts': [{
-                'contact_id': 'U${userBIdx + 1}',
+                'contact_id': 'U2',
                 'true_distance_m': trueDistanceAB,
                 'near_distance_m': nearDistanceA,
                 'reported_rank': 1,
@@ -216,4 +185,38 @@ class DetourRatioTest {
             },
         };
     }
+
+  Future<void> shareResults(List<Map<String, dynamic>> results) async {
+    final timestamp = DateTime.now()
+        .toIso8601String()
+        .replaceAll(':', '-')
+        .split('.')[0];
+    final filename = 'test_results_$timestamp.json';
+
+    // Encode the list of results to JSON bytes
+    final jsonBytes = utf8.encode(jsonEncode(results));
+
+    // Prepare share params
+    final params = ShareParams(
+      files: [
+        XFile.fromData(
+          jsonBytes,
+          mimeType: 'application/json',
+          name: filename, // fallback name
+        ),
+      ],
+      fileNameOverrides: [filename],
+      text: 'Here are the test results',
+    );
+
+    // Trigger share sheet
+    await SharePlus.instance.share(params);
+  }
+}
+
+String formatBytes(int bytes, int decimals) {
+  if (bytes <= 0) return "0 B";
+  const suffixes = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+  var i = (log(bytes) / log(1024)).floor();
+  return '${(bytes / pow(1024, i)).toStringAsFixed(decimals)} ${suffixes[i]}';
 }
