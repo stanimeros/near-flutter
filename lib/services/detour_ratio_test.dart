@@ -1,14 +1,13 @@
-import 'dart:io';
 import 'dart:math';
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_near/services/spatial_db.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:battery_plus/battery_plus.dart';
-import 'package:system_resources/system_resources.dart';
+import 'package:resource_monitor/resource_monitor.dart';
 
 class DetourRatioTest {
     // Detour Ratio Test Data
+    
     static const Map<String, dynamic> thessaloniki = {
         "name": "Thessaloniki",
         "center": {"lat": 40.6401, "lon": 22.9444},
@@ -48,15 +47,8 @@ class DetourRatioTest {
 
     static Future<Map<String, double>> getSystemInformation() async {
         try {
-            // Get CPU usage
-            double cpuLoadAvg = 0.0;
-            double memoryUsage = 0.0;
-            try {
-                cpuLoadAvg = SystemResources.cpuLoadAvg() * 100;
-                memoryUsage = SystemResources.memUsage() * 100;
-            } catch (e) {
-                debugPrint('Could not get CPU usage: $e');
-            }
+          final data = await ResourceMonitor.getResourceUsage;
+
 
             // Get battery level
             double batteryLevel = 0.0;
@@ -68,8 +60,8 @@ class DetourRatioTest {
             }
 
             return {
-                'cpu_load_avg_pct': cpuLoadAvg,
-                'memory_usage_pct': memoryUsage,
+                'cpu_usage_pct': data.cpuInUseByApp,
+                'memory_usage_pct': data.memoryInUseByApp,
                 'battery_level_pct': batteryLevel,
             };
         } catch (e) {
@@ -88,12 +80,6 @@ class DetourRatioTest {
         final cities = [thessaloniki, komotini];
         final results = <Map<String, dynamic>>[];
 
-        // Initialize the spatial database
-        debugPrint('Initializing spatial database...');
-        await SpatialDb().openDbFile('detour_ratio_test.db');
-        await SpatialDb().createSpatialTable(SpatialDb.pois);
-        await SpatialDb().createCellsTable(SpatialDb.cells);
-
         for (final city in cities) {
             debugPrint('\nTesting city: ${city['name']}');
             
@@ -107,24 +93,24 @@ class DetourRatioTest {
                     final userAIdx = meetingAttempt % (city['test_points'] as List).length;
                     final userBIdx = (meetingAttempt + 1) % (city['test_points'] as List).length;
                     
-                    debugPrint('  Meeting ${meetingAttempt + 1}: User A at point ${userAIdx + 1}, User B at point ${userBIdx + 1}');
+                    debugPrint('Meeting ${meetingAttempt + 1}: User A at point ${userAIdx + 1}, User B at point ${userBIdx + 1}');
                     try {
                         final result = await runDetourTest(city, k, userAIdx, userBIdx, meetingAttempt);
                         results.add(result);
-                        debugPrint('    Detour ratio: ${result['meeting_suggestion']['detour_ratio'].toStringAsFixed(2)}');
+                        debugPrint('Detour ratio: ${result['meeting_suggestion']['detour_ratio'].toStringAsFixed(2)}');
                     } catch (e) {
-                        debugPrint('    Error: $e');
+                        debugPrint('Error: $e');
                     }
                 }
             }
         }
 
         // Save results to JSON file
-        final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.')[0];
-        final filename = 'test_results_$timestamp.json';
-        final file = File(filename);
-        await file.writeAsString(jsonEncode(results));
-        debugPrint('\nResults saved to $filename');
+        // final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.')[0];
+        // final filename = 'test_results_$timestamp.json';
+        // final file = File(filename);
+        // await file.writeAsString(jsonEncode(results));
+        // debugPrint('\nResults saved to $filename');
         
         // Print summary statistics
         debugPrint('\n=== Summary Statistics ===');
@@ -211,7 +197,7 @@ class DetourRatioTest {
             'seed_info': '${DateTime.now().toUtc().toIso8601String()}Z',
             'system_information': {
                 'network_latency_ms': endTime.difference(startTime).inMilliseconds.toDouble(),
-                'cpu_load_avg_pct': systemInfo['cpu_load_avg_pct']!,
+                'cpu_usage_pct': systemInfo['cpu_usage_pct']!,
                 'memory_usage_pct': systemInfo['memory_usage_pct']!,
                 'battery_level_pct': systemInfo['battery_level_pct']!,
             },

@@ -56,22 +56,13 @@ class SpatialDb {
   // Function to initialize the database
   Future<void> openDbFile(String dbFilename) async {
     try {
+      ConnectionsHandler ch = ConnectionsHandler();
       Directory directory = await getApplicationDocumentsDirectory();
       String dbPath = '${directory.path}/$dbFilename';
-      await openDbFileWithPath(dbPath);
-    } catch(e) {
-      debugPrint(e.toString());
-    }
-  }
-
-  // Function to initialize the database with a specific path
-  Future<void> openDbFileWithPath(String dbPath) async {
-    try {
-      ConnectionsHandler ch = ConnectionsHandler();
       db = ch.open(dbPath);
       db.openOrCreate();
       db.forceRasterMobileCompatibility = false;
-      debugPrint('Database ready at: $dbPath');
+      debugPrint('Database ready');
     } catch(e) {
       debugPrint(e.toString());
     }
@@ -162,8 +153,8 @@ class SpatialDb {
       
       // Calculate total number of cells
       int totalCells = (maxLon - minLon + 1) * (maxLat - minLat + 1);
-      if (totalCells > 1000) { // Increased limit to 10,000 for rural areas
-        debugPrint('Too many cells: $totalCells > 1000');
+      if (totalCells > 100) {
+        debugPrint('Too many cells: $totalCells > 100');
         return [];
       }
       
@@ -215,8 +206,8 @@ class SpatialDb {
         }
       }
 
-      if (cellsToDownload > 1000) { // Increased limit to 10,000 for rural areas
-        debugPrint('Too many cells to download: $cellsToDownload > 1000');
+      if (cellsToDownload > 100) {
+        debugPrint('Too many cells to download: $cellsToDownload > 100');
         return [];
       }
 
@@ -233,7 +224,8 @@ class SpatialDb {
             points = await downloadPointsFromOSM(boundingBox, poisTable);
           }
           // Add small delay to avoid overwhelming the server
-          await Future.delayed(Duration(milliseconds: 200)); // Increased delay to 2 seconds
+          await Future.delayed(Duration(milliseconds: 1000));
+          //TODO: Remove the delay later
         }
         
         downloadedCells.add(boundingBox);
