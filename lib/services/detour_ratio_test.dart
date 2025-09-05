@@ -72,10 +72,6 @@ class DetourRatioTest {
                         final result = await runDetourTest(city, k, userAIdx, userBIdx, meetingAttempt);
                         results.add(result);
                         debugPrint('Detour ratio: ${result['meeting_suggestion']['detour_ratio'].toStringAsFixed(2)}');
-                        
-                        // Add delay between tests to prevent server overload
-                        debugPrint('Waiting 2 seconds before next test...');
-                        await Future.delayed(Duration(seconds: 2));
                     } catch (e) {
                         debugPrint('Error: $e');
                         // Still wait even if there's an error to prevent rapid retries
@@ -85,15 +81,15 @@ class DetourRatioTest {
                 
                 // Add extra delay between different k-values
                 if (k != kValues.last) {
-                    debugPrint('Completed k=$k tests. Waiting 5 seconds before next k-value...');
-                    await Future.delayed(Duration(seconds: 5));
+                    debugPrint('Completed k=$k tests');
+                    await Future.delayed(Duration(seconds: 1));
                 }
             }
             
             // Add delay between cities
             if (city != cities.last) {
-                debugPrint('Completed ${city['name']} tests. Waiting 10 seconds before next city...');
-                await Future.delayed(Duration(seconds: 10));
+                debugPrint('Completed ${city['name']} tests');
+                await Future.delayed(Duration(seconds: 1));
             }
         }
 

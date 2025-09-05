@@ -265,13 +265,10 @@ class SpatialDb {
       if (points.length < k) {
         debugPrint('Found ${points.length} points < $k');
         bufferMeters *= sqrt2;  // Increase search radius
-        if (bufferMeters > 50000) { // Limit to 50km radius (reasonable for urban areas)
+        if (bufferMeters > metersPerDegree) {
           debugPrint('Reached maximum search radius of 50km');
           break;
         }
-        // Add delay before expanding search radius to give server time to recover
-        debugPrint('Waiting 2 seconds before expanding search radius...');
-        await Future.delayed(Duration(seconds: 2));
         continue;
       }
 
