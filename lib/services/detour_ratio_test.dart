@@ -129,13 +129,25 @@ class DetourRatioTest {
         // Create Point objects for spatial database
         final userASpatialPoint = Point(userAPoint['lon'], userAPoint['lat']);
         
-        // Get KNN points for User A (as in friends_page.dart)
+        // Get KNN points for User A using two-step approach (as in scenarios.dart)
         final startTime = DateTime.now();
-        final userAKNNs = await SpatialDb().getKNNs(
-            k,
+        
+        // Step 1: Get 1 nearest point
+        final nearestPoint = await SpatialDb().getKNNs(
+            1,
             userASpatialPoint.lon,
             userASpatialPoint.lat,
-            50, // Use same radius as friends_page.dart
+            50,
+            SpatialDb.pois,
+            SpatialDb.cells,
+        );
+        
+        // Step 2: Get k nearest points from the nearest point location
+        final userAKNNs = await SpatialDb().getKNNs(
+            k,
+            nearestPoint.first.lon,
+            nearestPoint.first.lat,
+            50,
             SpatialDb.pois,
             SpatialDb.cells,
         );
