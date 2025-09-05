@@ -1,9 +1,22 @@
+// Detour Ratio Test
+// 
+// This test calculates detour ratios for meeting point suggestions using the spatial database.
+// It tests different k-values (5, 25, 100) across two cities (Thessaloniki and Komotini).
+// 
+// To run this test and generate JSON results:
+// flutter test test/detour_ratio_test.dart
+//
+// The test will create a JSON file with timestamp: test_results_YYYY-MM-DDTHH-MM-SS.json
+// containing detailed results for each test iteration including detour ratios, distances,
+// and meeting point suggestions.
+
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_near/services/spatial_db.dart';
+import 'package:geolocator/geolocator.dart';
 
 // Test data for Thessaloniki and Komotini
 const Map<String, dynamic> thessaloniki = {
@@ -75,20 +88,8 @@ class TestResult {
 }
 
 class DetourRatioTest {
-  static const double earthRadius = 6371000; // Earth's radius in meters
-
-  static double haversineDistance(double lat1, double lon1, double lat2, double lon2) {
-    final dLat = _toRadians(lat2 - lat1);
-    final dLon = _toRadians(lon2 - lon1);
-    final a = sin(dLat / 2) * sin(dLat / 2) +
-        cos(_toRadians(lat1)) * cos(_toRadians(lat2)) *
-        sin(dLon / 2) * sin(dLon / 2);
-    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
-    return earthRadius * c;
-  }
-
-  static double _toRadians(double degree) {
-    return degree * (pi / 180);
+  static double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    return Geolocator.distanceBetween(lat1, lon1, lat2, lon2);
   }
 
   static double calculateDetourRatio(
@@ -96,9 +97,9 @@ class DetourRatioTest {
     double contactLat, double contactLon,
     double meetingLat, double meetingLon
   ) {
-    final dUserMeeting = haversineDistance(userLat, userLon, meetingLat, meetingLon);
-    final dContactMeeting = haversineDistance(contactLat, contactLon, meetingLat, meetingLon);
-    final dUserContact = haversineDistance(userLat, userLon, contactLat, contactLon);
+    final dUserMeeting = calculateDistance(userLat, userLon, meetingLat, meetingLon);
+    final dContactMeeting = calculateDistance(contactLat, contactLon, meetingLat, meetingLon);
+    final dUserContact = calculateDistance(userLat, userLon, contactLat, contactLon);
     
     if (dUserContact == 0) return 1.0;
     return (dUserMeeting + dContactMeeting) / dUserContact;
@@ -161,11 +162,11 @@ class DetourRatioTest {
       },
       returnedContacts: [{
         'contact_id': 'U${contactIdx + 1}',
-        'true_distance_m': haversineDistance(
+        'true_distance_m': calculateDistance(
           userPoint['lat'], userPoint['lon'],
           contactPoint['lat'], contactPoint['lon'],
         ),
-        'near_distance_m': haversineDistance(
+        'near_distance_m': calculateDistance(
           userPoint['lat'], userPoint['lon'],
           meetingPoint.lat, meetingPoint.lon,
         ),
