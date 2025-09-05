@@ -219,13 +219,9 @@ class SpatialDb {
           debugPrint('Downloading new cell $cellKey: ${cell.lon},${cell.lat}');
           await addCellToTable(cell, cellsTable);
           BoundingBox boundingBox = BoundingBox(cell.lon * gridSize, (cell.lon + 1) * gridSize, cell.lat * gridSize, (cell.lat + 1) * gridSize);
-          List<Point> points = await downloadPointsFromServer(boundingBox, poisTable);
-          if (points.isEmpty) {
-            points = await downloadPointsFromOSM(boundingBox, poisTable);
-          }
-          // Add small delay to avoid overwhelming the server
-          await Future.delayed(Duration(milliseconds: 1000));
-          //TODO: Remove the delay later
+          await downloadPointsFromServerWithRetry(boundingBox, poisTable);
+          // Add delay to avoid overwhelming the server
+          await Future.delayed(Duration(milliseconds: 1000)); // 1 second delay between cell downloads
         }
         
         downloadedCells.add(boundingBox);
@@ -273,6 +269,9 @@ class SpatialDb {
           debugPrint('Reached maximum search radius of 50km');
           break;
         }
+        // Add delay before expanding search radius to give server time to recover
+        debugPrint('Waiting 2 seconds before expanding search radius...');
+        await Future.delayed(Duration(seconds: 2));
         continue;
       }
 
@@ -299,6 +298,7 @@ class SpatialDb {
 
   Future<List<Point>> downloadPointsFromServer(BoundingBox boundingBox, TableName poisTable) async {
     List<Point> downloadedPoints = [];
+    final client = http.Client();
     try {
       final uri = Uri.https('snf-78417.ok-kno.grnetcloud.net', '/api/points', {
         'minLon': boundingBox.minLon.toStringAsFixed(6),
@@ -307,7 +307,7 @@ class SpatialDb {
         'maxLat': boundingBox.maxLat.toStringAsFixed(6),
       });
       debugPrint('Downloading points from server: $uri');
-      final response = await http.get(uri).timeout(
+      final response = await client.get(uri).timeout(
         const Duration(seconds: 10),
         onTimeout: () {
           throw TimeoutException('Request timed out');
@@ -337,11 +337,41 @@ class SpatialDb {
     } catch (e) {
       debugPrint('Error downloading points: $e');
       return [];
+    } finally {
+      client.close(); // Force fresh connection for next request
     }
+  }
+
+  Future<List<Point>> downloadPointsFromServerWithRetry(BoundingBox boundingBox, TableName poisTable) async {
+    const int maxRetries = 10;
+    int retryCount = 0;
+    
+    while (retryCount < maxRetries) {
+      try {
+        final points = await downloadPointsFromServer(boundingBox, poisTable);
+        if (points.isNotEmpty) {
+          return points;
+        }
+        // If we get empty points, retry
+        retryCount++;
+        debugPrint('Got empty points, retry $retryCount/$maxRetries');
+        await Future.delayed(Duration(seconds: 2)); // Wait before retry
+      } catch (e) {
+        retryCount++;
+        debugPrint('Download failed, retry $retryCount/$maxRetries: $e');
+        if (retryCount < maxRetries) {
+          await Future.delayed(Duration(seconds: 2)); // Wait before retry
+        }
+      }
+    }
+    
+    debugPrint('Failed to download points after $maxRetries retries');
+    return [];
   }
 
   Future<List<Point>> downloadPointsFromOSM(BoundingBox boundingBox, TableName poisTable) async {
     List<Point> downloadedPoints = [];
+    final client = http.Client();
     final uri = Uri.https('overpass-api.de', '/api/interpreter', {
       'data': '[out:json];'
       'node(${boundingBox.minLat.toStringAsFixed(6)},'
@@ -352,7 +382,7 @@ class SpatialDb {
     });
     debugPrint('Downloading points from OSM: $uri');
     try {
-      final response = await http.get(uri).timeout(
+      final response = await client.get(uri).timeout(
         const Duration(seconds: 10),
         onTimeout: () {
           throw TimeoutException('Request timed out');
@@ -371,6 +401,8 @@ class SpatialDb {
       }
     } catch (e) {
       debugPrint('Error downloading points: $e');
+    } finally {
+      client.close(); // Force fresh connection for next request
     }
     return downloadedPoints;
   }

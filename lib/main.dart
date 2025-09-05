@@ -14,7 +14,7 @@ import 'package:flutter_near/services/user_provider.dart';
 import 'package:flutter_near/services/spatial_db.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // await SpatialDb().deleteDbFile();
+  await SpatialDb().deleteDbFile(SpatialDb.dbFilename); //TODO: Remove this line later
   
   // Initialize both databases
   await SpatialDb().openDbFile(SpatialDb.dbFilename);
