@@ -56,13 +56,22 @@ class SpatialDb {
   // Function to initialize the database
   Future<void> openDbFile(String dbFilename) async {
     try {
-      ConnectionsHandler ch = ConnectionsHandler();
       Directory directory = await getApplicationDocumentsDirectory();
       String dbPath = '${directory.path}/$dbFilename';
+      await openDbFileWithPath(dbPath);
+    } catch(e) {
+      debugPrint(e.toString());
+    }
+  }
+
+  // Function to initialize the database with a specific path
+  Future<void> openDbFileWithPath(String dbPath) async {
+    try {
+      ConnectionsHandler ch = ConnectionsHandler();
       db = ch.open(dbPath);
       db.openOrCreate();
       db.forceRasterMobileCompatibility = false;
-      debugPrint('Database ready');
+      debugPrint('Database ready at: $dbPath');
     } catch(e) {
       debugPrint(e.toString());
     }
