@@ -10,7 +10,6 @@
 // containing detailed results for each test iteration including detour ratios, distances,
 // and meeting point suggestions.
 
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
@@ -88,18 +87,14 @@ class TestResult {
 }
 
 class DetourRatioTest {
-  static double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
-    return Geolocator.distanceBetween(lat1, lon1, lat2, lon2);
-  }
-
   static double calculateDetourRatio(
     double userLat, double userLon,
     double contactLat, double contactLon,
     double meetingLat, double meetingLon
   ) {
-    final dUserMeeting = calculateDistance(userLat, userLon, meetingLat, meetingLon);
-    final dContactMeeting = calculateDistance(contactLat, contactLon, meetingLat, meetingLon);
-    final dUserContact = calculateDistance(userLat, userLon, contactLat, contactLon);
+    final dUserMeeting = Geolocator.distanceBetween(userLat, userLon, meetingLat, meetingLon);
+    final dContactMeeting = Geolocator.distanceBetween(contactLat, contactLon, meetingLat, meetingLon);
+    final dUserContact = Geolocator.distanceBetween(userLat, userLon, contactLat, contactLon);
     
     if (dUserContact == 0) return 1.0;
     return (dUserMeeting + dContactMeeting) / dUserContact;
@@ -124,7 +119,7 @@ class DetourRatioTest {
       k,
       userSpatialPoint.lon,
       userSpatialPoint.lat,
-      50, // buffer meters
+      100,
       SpatialDb.pois,
       SpatialDb.cells,
     );
@@ -132,6 +127,12 @@ class DetourRatioTest {
     
     if (userKNNs.isEmpty) {
       throw Exception('No KNN points found for user');
+    }
+    
+    // Check if we found a reasonable number of points (not too sparse)
+    debugPrint('Found ${userKNNs.length} points (requested $k)');
+    if (userKNNs.length < k) {
+      debugPrint('Warning: Only found ${userKNNs.length} points (requested $k) - area may be too sparse');
     }
     
     // Select a random point from KNNs as the meeting point (like in friends_page.dart)
@@ -162,11 +163,11 @@ class DetourRatioTest {
       },
       returnedContacts: [{
         'contact_id': 'U${contactIdx + 1}',
-        'true_distance_m': calculateDistance(
+        'true_distance_m': Geolocator.distanceBetween(
           userPoint['lat'], userPoint['lon'],
           contactPoint['lat'], contactPoint['lon'],
         ),
-        'near_distance_m': calculateDistance(
+        'near_distance_m': Geolocator.distanceBetween(
           userPoint['lat'], userPoint['lon'],
           meetingPoint.lat, meetingPoint.lon,
         ),
@@ -182,25 +183,9 @@ class DetourRatioTest {
     );
   }
 
-  // Generate mock KNN points around a given location (simulating getKNNs behavior)
-  static List<Point> generateMockKNNPoints(double centerLat, double centerLon, int k) {
-    final random = Random();
-    final points = <Point>[];
-    
-    for (int i = 0; i < k; i++) {
-      // Generate points within ~500m radius
-      final latOffset = (random.nextDouble() - 0.5) * 0.0045; // ~500m
-      final lonOffset = (random.nextDouble() - 0.5) * 0.0045; // ~500m
-      
-      points.add(Point(centerLon + lonOffset, centerLat + latOffset));
-    }
-    
-    return points;
-  }
-
   static Future<void> runAllTests() async {
     final kValues = [5, 25, 100];
-    final cities = [thessaloniki, komotini];
+    final cities = [thessaloniki, komotini]; // Test both cities
     final results = <TestResult>[];
 
     debugPrint('Starting detour ratio tests...');
@@ -241,8 +226,8 @@ class DetourRatioTest {
     // Save results
     final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.')[0];
     final filename = 'test_results_$timestamp.json';
-    final file = File(filename);
-    await file.writeAsString(jsonEncode(results.map((r) => r.toJson()).toList()));
+    // final file = File(filename);
+    // await file.writeAsString(jsonEncode(results.map((r) => r.toJson()).toList()));
     debugPrint('\nResults saved to $filename');
     
     // Print summary statistics

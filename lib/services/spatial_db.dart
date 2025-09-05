@@ -162,8 +162,8 @@ class SpatialDb {
       
       // Calculate total number of cells
       int totalCells = (maxLon - minLon + 1) * (maxLat - minLat + 1);
-      if (totalCells > 8) {
-        debugPrint('Too many cells: $totalCells > 8');
+      if (totalCells > 1000) { // Increased limit from 100 to 1000
+        debugPrint('Too many cells: $totalCells > 1000');
         return [];
       }
       
@@ -215,8 +215,8 @@ class SpatialDb {
         }
       }
 
-      if (cellsToDownload > 4) {
-        debugPrint('Too many cells to download: $cellsToDownload > 4');
+      if (cellsToDownload > 1000) { // Increased limit from 100 to 1000
+        debugPrint('Too many cells to download: $cellsToDownload > 1000');
         return [];
       }
 
@@ -232,6 +232,8 @@ class SpatialDb {
           if (points.isEmpty) {
             points = await downloadPointsFromOSM(boundingBox, poisTable);
           }
+          // Add small delay to avoid overwhelming the server
+          await Future.delayed(Duration(milliseconds: 300));
         }
         
         downloadedCells.add(boundingBox);
