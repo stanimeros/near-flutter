@@ -162,7 +162,7 @@ class SpatialDb {
       
       // Calculate total number of cells
       int totalCells = (maxLon - minLon + 1) * (maxLat - minLat + 1);
-      if (totalCells > 1000) { // Increased limit from 100 to 1000
+      if (totalCells > 1000) { // Increased limit to 10,000 for rural areas
         debugPrint('Too many cells: $totalCells > 1000');
         return [];
       }
@@ -215,7 +215,7 @@ class SpatialDb {
         }
       }
 
-      if (cellsToDownload > 1000) { // Increased limit from 100 to 1000
+      if (cellsToDownload > 1000) { // Increased limit to 10,000 for rural areas
         debugPrint('Too many cells to download: $cellsToDownload > 1000');
         return [];
       }
@@ -233,7 +233,7 @@ class SpatialDb {
             points = await downloadPointsFromOSM(boundingBox, poisTable);
           }
           // Add small delay to avoid overwhelming the server
-          await Future.delayed(Duration(milliseconds: 300));
+          await Future.delayed(Duration(milliseconds: 200)); // Increased delay to 2 seconds
         }
         
         downloadedCells.add(boundingBox);
@@ -277,7 +277,8 @@ class SpatialDb {
       if (points.length < k) {
         debugPrint('Found ${points.length} points < $k');
         bufferMeters *= sqrt2;  // Increase search radius
-        if (bufferMeters > metersPerDegree) {
+        if (bufferMeters > 50000) { // Limit to 50km radius (reasonable for urban areas)
+          debugPrint('Reached maximum search radius of 50km');
           break;
         }
         continue;
