@@ -59,14 +59,18 @@ class DetourRatioTest {
             for (final k in kValues) {
                 debugPrint('\nTesting with k=$k');
                 
-                // Test all combinations of test points (5×5=25 combinations)
+                // Test all combinations of test points (5×5=25 combinations, excluding same location = 20 combinations)
                 final testPoints = city['test_points'] as List;
                 int combinationCount = 0;
+                final totalCombinations = testPoints.length * testPoints.length - testPoints.length; // 5×5 - 5 = 20
                 
                 for (int userAIdx = 0; userAIdx < testPoints.length; userAIdx++) {
                     for (int userBIdx = 0; userBIdx < testPoints.length; userBIdx++) {
+                        // Skip if both users are at the same location
+                        if (userAIdx == userBIdx) continue;
+                        
                         combinationCount++;
-                        debugPrint('Combination $combinationCount/25: User A (U1) at point ${userAIdx + 1}, User B (U2) at point ${userBIdx + 1}');
+                        debugPrint('Combination $combinationCount/$totalCombinations: User A (U1) at point ${userAIdx + 1}, User B (U2) at point ${userBIdx + 1}');
                         try {
                             final result = await runDetourTest(city, k, userAIdx, userBIdx, combinationCount - 1);
                             results.add(result);
