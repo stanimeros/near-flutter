@@ -162,11 +162,13 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     _markers = meetingMarkers;
 
     // First try with the actual user and friend points
-    List<Point> points = await SpatialDb().getClustersBetweenTwoPoints(
+    List<NearCluster> clusters = await SpatialDb().getClustersBetweenTwoPoints(
       widget.currentUser!.getPoint(), 
       widget.friend!.getPoint(),
       httpClient: httpClient
     );
+
+    List<Point> points = clusters.map((cluster) => cluster.corePoint).toList();
 
     // Print clusters for debugging
     debugPrint('Loaded ${points.length} clusters between ${widget.currentUser!.username} and ${widget.friend!.username}');

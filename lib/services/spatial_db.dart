@@ -17,6 +17,18 @@ class Point {
   Point(this.lon, this.lat);
 }
 
+class NearCluster {
+  final String id;
+  final String city;
+  final Point corePoint;
+
+  NearCluster({
+    required this.id,
+    required this.city,
+    required this.corePoint,
+  });
+}
+
 class GridCell {
   int lon;
   int lat;
@@ -404,58 +416,89 @@ class SpatialDb {
     return downloadedPoints;
   }
 
-  Future<List<Point>> getClustersBetweenTwoPoints(Point point1, Point point2, {method = 'dbscan', int clusters = 20, double eps = 0.00025, int minPoints = 2, http.Client? httpClient}) async {
-    try {
-      final uri = Uri.https('snf-78417.ok-kno.grnetcloud.net', '/api/clusters', {
-        'lon1': point1.lon.toStringAsFixed(6),
-        'lat1': point1.lat.toStringAsFixed(6),
-        'lon2': point2.lon.toStringAsFixed(6),
-        'lat2': point2.lat.toStringAsFixed(6),
-      });
-      
-      http.Response response;
-      debugPrint('Downloading clusters between two points: $uri');
-      if (httpClient == null) {
-        response = await http.get(uri).timeout(
-          const Duration(seconds: 10),
-          onTimeout: () {
-            throw TimeoutException('Request timed out');
-          },
-        );
-      } else {
-        response = await httpClient.get(uri).timeout(
-          const Duration(seconds: 10),
-          onTimeout: () {
-            throw TimeoutException('Request timed out');
-          },
-        );
+  Future<List<NearCluster>> getClustersBetweenTwoPoints(Point point1, Point point2, {method = 'dbscan', int clusters = 20, double eps = 0.00025, int minPoints = 2, http.Client? httpClient}) async {
+    const int maxRetries = 10;
+    int retryCount = 0;
+    
+    while (retryCount < maxRetries) {
+      try {
+        final clusters = await _getClustersFromAPI(point1, point2, httpClient: httpClient);
+        if (clusters.isNotEmpty) {
+          return clusters;
+        }
+        // If we get empty clusters, retry
+        retryCount++;
+        debugPrint('Got empty clusters, retry $retryCount/$maxRetries');
+        await Future.delayed(Duration(seconds: 2)); // Wait before retry
+      } catch (e) {
+        retryCount++;
+        debugPrint('Clusters request failed, retry $retryCount/$maxRetries: $e');
+        if (retryCount < maxRetries) {
+          await Future.delayed(Duration(seconds: 2)); // Wait before retry
+        }
       }
+    }
+    
+    debugPrint('Failed to get clusters after $maxRetries attempts');
+    return [];
+  }
 
-      if (response.statusCode != 200) {
-        throw HttpException('Failed with status: ${response.statusCode}');
-      }
-      
-      final data = jsonDecode(response.body);
-      List<Point> allClusters = [];
-      
-      // Process clusters from all cities
-      if (data['cities'] != null) {
-        for (var city in data['cities']) {
-          for (var cluster in city['clusters']) {
-            allClusters.add(Point(
-              cluster['longitude'],
-              cluster['latitude'],
+  Future<List<NearCluster>> _getClustersFromAPI(Point point1, Point point2, {http.Client? httpClient}) async {
+    final uri = Uri.https('snf-78417.ok-kno.grnetcloud.net', '/api/clusters', {
+      'lon1': point1.lon.toStringAsFixed(6),
+      'lat1': point1.lat.toStringAsFixed(6),
+      'lon2': point2.lon.toStringAsFixed(6),
+      'lat2': point2.lat.toStringAsFixed(6),
+    });
+    
+    http.Response response;
+    debugPrint('Downloading clusters between two points: $uri');
+    if (httpClient == null) {
+      response = await http.get(uri).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw TimeoutException('Request timed out');
+        },
+      );
+    } else {
+      response = await httpClient.get(uri).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw TimeoutException('Request timed out');
+        },
+      );
+    }
+
+    if (response.statusCode != 200) {
+      throw HttpException('Failed with status: ${response.statusCode}');
+    }
+    
+    final data = jsonDecode(response.body);
+    List<NearCluster> allClusters = [];
+    
+    // Process clusters from all cities
+    if (data['cities'] != null) {
+      for (var city in data['cities']) {
+        final cityName = city['name'] ?? 'Unknown';
+        if (city['clusters'] != null) {
+          for (var clusterData in city['clusters']) {
+            final clusterId = clusterData['cluster_id']?.toString() ?? 'unknown';
+            
+            allClusters.add(NearCluster(
+              id: clusterId,
+              city: cityName,
+              corePoint: Point(
+                clusterData['longitude'],
+                clusterData['latitude'],
+              ),
             ));
           }
         }
       }
-      
-      debugPrint('Found ${allClusters.length} clusters across all cities');
-      return allClusters;
-    } catch (e) {
-      debugPrint('Error getting clusters: $e');
-      return [];
     }
+    
+    debugPrint('Found ${allClusters.length} clusters across all cities');
+    return allClusters;
   }
 
   // New method to get city polygons within the map view

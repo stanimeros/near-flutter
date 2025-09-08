@@ -7,6 +7,9 @@ import 'package:battery_plus/battery_plus.dart';
 import 'package:resource_monitor/resource_monitor.dart';
 import 'package:share_plus/share_plus.dart';
 
+//pick a random point close from cluster center go
+//after spoi generaetion just pick 5 random clusters
+
 class DetourRatioTest {
     // Detour Ratio Test Data
     static const Map<String, dynamic> thessaloniki = {
@@ -132,12 +135,12 @@ class DetourRatioTest {
         
         // Create Point objects for spatial database
         final userASpatialPoint = Point(userAPoint['lon'], userAPoint['lat']);
+        final userBSpatialPoint = Point(userBPoint['lon'], userBPoint['lat']);
         
-        // Get KNN points for User A using two-step approach (as in scenarios.dart)
-        final startTime = DateTime.now();
+        // Generate SPOIs for both users using two-step approach
         
-        // Step 1: Get 1 nearest point
-        final nearestPoint = await SpatialDb().getKNNs(
+        // Step 1: Get 1 nearest point for User A
+        final nearestPointA = await SpatialDb().getKNNs(
             1,
             userASpatialPoint.lon,
             userASpatialPoint.lat,
@@ -146,24 +149,61 @@ class DetourRatioTest {
             SpatialDb.cells,
         );
         
-        // Step 2: Get k nearest points from the nearest point location
+        // Step 2: Get k nearest points from User A's nearest point location
         final userAKNNs = await SpatialDb().getKNNs(
             k,
-            nearestPoint.first.lon,
-            nearestPoint.first.lat,
+            nearestPointA.first.lon,
+            nearestPointA.first.lat,
             50,
             SpatialDb.pois,
             SpatialDb.cells,
         );
-        final endTime = DateTime.now();
         
-        if (userAKNNs.isEmpty) {
-            throw Exception('No KNN points found for User A');
+        // Step 1: Get 1 nearest point for User B
+        final nearestPointB = await SpatialDb().getKNNs(
+            1,
+            userBSpatialPoint.lon,
+            userBSpatialPoint.lat,
+            50,
+            SpatialDb.pois,
+            SpatialDb.cells,
+        );
+        
+        // Step 2: Get k nearest points from User B's nearest point location
+        final userBKNNs = await SpatialDb().getKNNs(
+            k,
+            nearestPointB.first.lon,
+            nearestPointB.first.lat,
+            50,
+            SpatialDb.pois,
+            SpatialDb.cells,
+        );
+        
+        if (userAKNNs.isEmpty || userBKNNs.isEmpty) {
+            throw Exception('No KNN points found for users');
         }
         
-        // Select a random point from KNNs as the meeting point (same logic as friends_page.dart)
+        // Select random SPOIs for both users
         final random = Random();
-        final meetingPoint = userAKNNs[random.nextInt(userAKNNs.length)];
+        final userASPOI = userAKNNs[random.nextInt(userAKNNs.length)];
+        final userBSPOI = userBKNNs[random.nextInt(userBKNNs.length)];
+        
+        // Get clusters between the two SPOIs via API
+        final clustersStartTime = DateTime.now();
+        final clusters = await SpatialDb().getClustersBetweenTwoPoints(userASPOI, userBSPOI);
+        final clustersEndTime = DateTime.now();
+        
+        if (clusters.isEmpty) {
+            throw Exception('No clusters found between SPOIs');
+        }
+        
+        // Choose a random cluster with timestamp seed
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final seededRandom = Random(timestamp);
+        final selectedCluster = clusters[seededRandom.nextInt(clusters.length)];
+        
+        // Get the meeting point (first point in the cluster)
+        final meetingPoint = selectedCluster.corePoint;
         
         // Calculate detour ratio: (d(A,Σ)+d(B,Σ)) / d(A,B)
         final detourRatio = calculateDetourRatio(
@@ -177,9 +217,9 @@ class DetourRatioTest {
             userAPoint['lat'], userAPoint['lon'],
             userBPoint['lat'], userBPoint['lon'],
         );
-        final nearDistanceA = Geolocator.distanceBetween(
-            userAPoint['lat'], userAPoint['lon'],
-            meetingPoint.lat, meetingPoint.lon,
+        final nearDistanceAB = Geolocator.distanceBetween(
+            userASPOI.lat, userASPOI.lon,
+            userBSPOI.lat, userBSPOI.lon,
         );
 
         final data = await ResourceMonitor.getResourceUsage;
@@ -190,25 +230,25 @@ class DetourRatioTest {
             'user_id': 'U1',
             'contact_ids': ['U2'],
             'true_location': {'lat': userAPoint['lat'], 'lon': userAPoint['lon']},
-            'generated_spoi': {'lat': meetingPoint.lat, 'lon': meetingPoint.lon},
+            'generated_spoi': {'lat': userASPOI.lat, 'lon': userASPOI.lon},
             'candidate_spois': userAKNNs.map((p) => {'lat': p.lat, 'lon': p.lon}).toList(),
             'k_value': k,
-            'seed_info': DateTime.now().toUtc().toIso8601String(),
+            'seed_info': timestamp.toString(),
             'system_information': {
-                'network_latency_ms': endTime.difference(startTime).inMilliseconds.toDouble(),
+                'network_latency_ms': clustersEndTime.difference(clustersStartTime).inMilliseconds.toDouble(),
                 'cpu_usage_pct': data.cpuInUseByApp,
                 'battery_level_pct': batteryLevel,
-                'memory_usage': formatBytes(data.memoryInUseByApp.toInt(), 2),
+                'memory_usage_bytes': data.memoryInUseByApp.toInt(),
             },
             'returned_contacts': [{
                 'contact_id': 'U2',
                 'true_distance_m': trueDistanceAB,
-                'near_distance_m': nearDistanceA,
+                'near_distance_m': nearDistanceAB,
                 'reported_rank': 1,
             }],
             'meeting_suggestion': {
-                'city_id': city['name'],
-                'cluster_id': meetingAttempt + 1,
+                'city_id': selectedCluster.city,
+                'cluster_id': selectedCluster.id,
                 'meeting_point': {'lat': meetingPoint.lat, 'lon': meetingPoint.lon},
                 'accepted': true,
                 'detour_ratio': detourRatio,
@@ -242,11 +282,4 @@ class DetourRatioTest {
     // Trigger share sheet
     await SharePlus.instance.share(params);
   }
-}
-
-String formatBytes(int bytes, int decimals) {
-  if (bytes <= 0) return "0 B";
-  const suffixes = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
-  var i = (log(bytes) / log(1024)).floor();
-  return '${(bytes / pow(1024, i)).toStringAsFixed(decimals)} ${suffixes[i]}';
 }
