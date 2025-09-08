@@ -59,23 +59,23 @@ class DetourRatioTest {
             for (final k in kValues) {
                 debugPrint('\nTesting with k=$k');
                 
-                // Simulate 2 users meeting 5 times from different locations
-                // User A and User B choose 5 different meeting points
-                for (int meetingAttempt = 0; meetingAttempt < 5; meetingAttempt++) {
-                    // Use different starting points for each meeting attempt
-                    // User A and User B are always the same users (U1 and U2), but at different locations
-                    final userAIdx = meetingAttempt % (city['test_points'] as List).length;
-                    final userBIdx = (meetingAttempt + 1) % (city['test_points'] as List).length;
-                    
-                    debugPrint('Meeting ${meetingAttempt + 1}: User A (U1) at point ${userAIdx + 1}, User B (U2) at point ${userBIdx + 1}');
-                    try {
-                        final result = await runDetourTest(city, k, userAIdx, userBIdx, meetingAttempt);
-                        results.add(result);
-                        debugPrint('Detour ratio: ${result['meeting_suggestion']['detour_ratio'].toStringAsFixed(2)}');
-                    } catch (e) {
-                        debugPrint('Error: $e');
-                        // Still wait even if there's an error to prevent rapid retries
-                        await Future.delayed(Duration(seconds: 2));
+                // Test all combinations of test points (5×5=25 combinations)
+                final testPoints = city['test_points'] as List;
+                int combinationCount = 0;
+                
+                for (int userAIdx = 0; userAIdx < testPoints.length; userAIdx++) {
+                    for (int userBIdx = 0; userBIdx < testPoints.length; userBIdx++) {
+                        combinationCount++;
+                        debugPrint('Combination $combinationCount/25: User A (U1) at point ${userAIdx + 1}, User B (U2) at point ${userBIdx + 1}');
+                        try {
+                            final result = await runDetourTest(city, k, userAIdx, userBIdx, combinationCount - 1);
+                            results.add(result);
+                            debugPrint('Detour ratio: ${result['meeting_suggestion']['detour_ratio'].toStringAsFixed(2)}');
+                        } catch (e) {
+                            debugPrint('Error: $e');
+                            // Still wait even if there's an error to prevent rapid retries
+                            await Future.delayed(Duration(seconds: 2));
+                        }
                     }
                 }
                 
