@@ -14,6 +14,7 @@ class DetourRatioTest {
     // Detour Ratio Test Data
     static const Map<String, dynamic> thessaloniki = {
         "name": "ΘΕΣΣΑΛΟΝΙΚΗΣ",
+        "city_id": "2335",
         "center": {"lat": 40.6401, "lon": 22.9444},
         "test_points": [
             {"lat": 40.6401, "lon": 22.9444},  // City center
@@ -26,6 +27,7 @@ class DetourRatioTest {
 
     static const Map<String, dynamic> komotini = {
         "name": "ΚΟΜΟΤΗΝΗΣ",
+        "city_id": "2595",
         "center": {"lat": 41.1224, "lon": 25.4066},
         "test_points": [
             {"lat": 41.1224, "lon": 25.4066},  // City center
@@ -108,7 +110,7 @@ class DetourRatioTest {
             debugPrint('\n${city['name']}:');
             for (final k in kValues) {
                 final cityResults = results.where((r) => 
-                    r['meeting_suggestion']['city_id'] == city['name'] && r['k_value'] == k
+                    r['meeting_suggestion']['city_id'] == city['city_id'] && r['k_value'] == k
                 ).toList();
                 
                 if (cityResults.isNotEmpty) {
@@ -249,7 +251,7 @@ class DetourRatioTest {
                 'reported_rank': 1,
             }],
             'meeting_suggestion': {
-                'city_id': selectedCluster.city,
+                'city_id': selectedCluster.cityId,
                 'cluster_id': selectedCluster.id,
                 'meeting_point': {'lat': meetingPoint.lat, 'lon': meetingPoint.lon},
                 'accepted': true,

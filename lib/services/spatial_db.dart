@@ -19,12 +19,14 @@ class Point {
 
 class NearCluster {
   final String id;
-  final String city;
+  final String cityId;
+  final String cityName;
   final Point corePoint;
 
   NearCluster({
     required this.id,
-    required this.city,
+    required this.cityId,
+    required this.cityName,
     required this.corePoint,
   });
 }
@@ -483,10 +485,12 @@ class SpatialDb {
         if (city['clusters'] != null) {
           for (var clusterData in city['clusters']) {
             final clusterId = clusterData['cluster_id']?.toString() ?? 'unknown';
+            final cityId = clusterData['city_id']?.toString() ?? 'unknown';
             
             allClusters.add(NearCluster(
               id: clusterId,
-              city: cityName,
+              cityId: cityId,
+              cityName: cityName,
               corePoint: Point(
                 clusterData['longitude'],
                 clusterData['latitude'],
