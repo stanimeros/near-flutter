@@ -452,7 +452,7 @@ class SpatialDb {
     });
     
     http.Response response;
-    debugPrint('Downloading clusters between two points: $uri');
+    debugPrint('Getting clusters between two points: $uri');
     if (httpClient == null) {
       response = await http.get(uri).timeout(
         const Duration(seconds: 10),

@@ -143,8 +143,8 @@ def get_clusters_for_locations():
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Find the nearest cities directly - more efficient approach
-        logging.info("Finding nearest cities for points")
+        # Find the nearest cities that have clusters - optimized approach
+        logging.info("Finding nearest cities with clusters for points")
         
         cur.execute("""
             WITH 
@@ -161,6 +161,7 @@ def get_clusters_for_locations():
                     ST_Distance(c.geom::geography, p.geom::geography) as distance,
                     'point1' as point_source
                 FROM cities c, point1 p
+                WHERE EXISTS (SELECT 1 FROM poi_clusters pc WHERE pc.city_id = c.id)
                 ORDER BY c.geom <-> p.geom
                 LIMIT 1
             ),
@@ -171,6 +172,7 @@ def get_clusters_for_locations():
                     ST_Distance(c.geom::geography, p.geom::geography) as distance,
                     'point2' as point_source
                 FROM cities c, point2 p
+                WHERE EXISTS (SELECT 1 FROM poi_clusters pc WHERE pc.city_id = c.id)
                 ORDER BY c.geom <-> p.geom
                 LIMIT 1
             )

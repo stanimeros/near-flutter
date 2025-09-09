@@ -13,7 +13,7 @@ import 'package:share_plus/share_plus.dart';
 class DetourRatioTest {
     // Detour Ratio Test Data
     static const Map<String, dynamic> thessaloniki = {
-        "name": "Thessaloniki",
+        "name": "ΘΕΣΣΑΛΟΝΙΚΗΣ",
         "center": {"lat": 40.6401, "lon": 22.9444},
         "test_points": [
             {"lat": 40.6401, "lon": 22.9444},  // City center
@@ -25,7 +25,7 @@ class DetourRatioTest {
     };
 
     static const Map<String, dynamic> komotini = {
-        "name": "Komotini",
+        "name": "ΚΟΜΟΤΗΝΗΣ",
         "center": {"lat": 41.1224, "lon": 25.4066},
         "test_points": [
             {"lat": 41.1224, "lon": 25.4066},  // City center
@@ -183,10 +183,11 @@ class DetourRatioTest {
             throw Exception('No KNN points found for users');
         }
         
-        // Select random SPOIs for both users
-        final random = Random();
-        final userASPOI = userAKNNs[random.nextInt(userAKNNs.length)];
-        final userBSPOI = userBKNNs[random.nextInt(userBKNNs.length)];
+        // Select random SPOIs for both users with SPOI seed
+        final spoiSeed = DateTime.now().millisecondsSinceEpoch;
+        final spoiRandom = Random(spoiSeed);
+        final userASPOI = userAKNNs[spoiRandom.nextInt(userAKNNs.length)];
+        final userBSPOI = userBKNNs[spoiRandom.nextInt(userBKNNs.length)];
         
         // Get clusters between the two SPOIs via API
         final clustersStartTime = DateTime.now();
@@ -197,10 +198,10 @@ class DetourRatioTest {
             throw Exception('No clusters found between SPOIs');
         }
         
-        // Choose a random cluster with timestamp seed
-        final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final seededRandom = Random(timestamp);
-        final selectedCluster = clusters[seededRandom.nextInt(clusters.length)];
+        // Choose a random cluster with meeting seed
+        final meetingSeed = DateTime.now().millisecondsSinceEpoch;
+        final meetingRandom = Random(meetingSeed);
+        final selectedCluster = clusters[meetingRandom.nextInt(clusters.length)];
         
         // Get the meeting point (first point in the cluster)
         final meetingPoint = selectedCluster.corePoint;
@@ -233,7 +234,8 @@ class DetourRatioTest {
             'generated_spoi': {'lat': userASPOI.lat, 'lon': userASPOI.lon},
             'candidate_spois': userAKNNs.map((p) => {'lat': p.lat, 'lon': p.lon}).toList(),
             'k_value': k,
-            'seed_info': timestamp.toString(),
+            'spoi_seed_info': spoiSeed.toString(),
+            'meeting_seed_info': meetingSeed.toString(),
             'system_information': {
                 'network_latency_ms': clustersEndTime.difference(clustersStartTime).inMilliseconds.toDouble(),
                 'cpu_usage_pct': data.cpuInUseByApp,
