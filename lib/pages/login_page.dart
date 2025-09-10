@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_near/services/auth.dart';
-import 'package:flutter_near/services/detour_ratio_test.dart';
+import 'package:flutter_near/pages/detour_test_page.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 
 class LoginPage extends StatefulWidget {
@@ -73,19 +73,30 @@ class _LoginPageState extends State<LoginPage> {
           child: ConstrainedBox(
             constraints: BoxConstraints(
               minHeight: MediaQuery.of(context).size.height - 
-                        MediaQuery.of(context).padding.top - 
-                        MediaQuery.of(context).padding.bottom,
+                MediaQuery.of(context).padding.top - 
+                MediaQuery.of(context).padding.bottom,
             ),
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  TextButton(
+                  ElevatedButton.icon(
                     onPressed: () {
-                      DetourRatioTest().runDetourRatioTest();
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const DetourTestPage(),
+                        ),
+                      );
                     },
-                    child: Text('Run Detour Ratio Test'),
+                    icon: Icon(Icons.analytics),
+                    label: Text('Detour Ratio Test'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    ),
                   ),
                   TextButton(
                     onPressed: () {

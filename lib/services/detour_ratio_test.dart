@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:math';
-import 'package:flutter/foundation.dart';
+import 'dart:math' as math;
+import 'package:flutter/material.dart';
 import 'package:flutter_near/services/spatial_db.dart';
+import 'package:flutter_near/pages/detour_test_map_page.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:resource_monitor/resource_monitor.dart';
@@ -11,32 +13,128 @@ import 'package:share_plus/share_plus.dart';
 //after spoi generaetion just pick 5 random clusters
 
 class DetourRatioTest {
+    // Helper function to calculate coordinates at a specific distance and bearing from a point
+    static Map<String, double> calculateDestinationPoint(double lat, double lon, double distanceMeters, double bearingDegrees) {
+        const double earthRadius = 6371000; // Earth's radius in meters
+        
+        final double latRad = lat * (3.14159265359 / 180);
+        final double lonRad = lon * (3.14159265359 / 180);
+        final double bearingRad = bearingDegrees * (3.14159265359 / 180);
+        
+        final double angularDistance = distanceMeters / earthRadius;
+        
+        final double newLatRad = math.asin(
+            math.sin(latRad) * math.cos(angularDistance) +
+            math.cos(latRad) * math.sin(angularDistance) * math.cos(bearingRad)
+        );
+        
+        final double newLonRad = lonRad + math.atan2(
+            math.sin(bearingRad) * math.sin(angularDistance) * math.cos(latRad),
+            math.cos(angularDistance) - math.sin(latRad) * math.sin(newLatRad)
+        );
+        
+        return {
+            'lat': newLatRad * (180 / 3.14159265359),
+            'lon': newLonRad * (180 / 3.14159265359)
+        };
+    }
+
+    // Generate test points programmatically for consistent distances
+    static List<Map<String, double>> generateTestPoints(double centerLat, double centerLon) {
+        return [
+            {"lat": centerLat, "lon": centerLon},  // Point 1: City center
+            calculateDestinationPoint(centerLat, centerLon, 1000, -60),
+        ];
+    }
+
     // Detour Ratio Test Data
-    static const Map<String, dynamic> thessaloniki = {
+    static Map<String, dynamic> get thessaloniki => {
         "name": "ΘΕΣΣΑΛΟΝΙΚΗΣ",
         "city_id": "2335",
-        "center": {"lat": 40.6401, "lon": 22.9444},
-        "test_points": [
-            {"lat": 40.6401, "lon": 22.9444},  // City center
-            {"lat": 40.6772, "lon": 22.9114},  // Evosmos
-            {"lat": 40.5764, "lon": 22.9583},  // Kalamaria
-            {"lat": 40.6532, "lon": 22.9348},  // Aristotelous Square
-            {"lat": 40.6263, "lon": 22.9532},  // White Tower
-        ]
+        "center": {"lat": 40.625163649564506, "lon": 22.959696666069682},
+        "test_points": generateTestPoints(40.625163649564506, 22.959696666069682),
     };
 
-    static const Map<String, dynamic> komotini = {
-        "name": "ΚΟΜΟΤΗΝΗΣ",
+    static Map<String, dynamic> get komotini => {
+        "name": "ΚΟΜΟΤΗΝΗΣ", 
         "city_id": "2595",
-        "center": {"lat": 41.1224, "lon": 25.4066},
-        "test_points": [
-            {"lat": 41.1224, "lon": 25.4066},  // City center
-            {"lat": 41.1193, "lon": 25.4053},  // Central Square
-            {"lat": 41.1172, "lon": 25.4133},  // Train Station
-            {"lat": 41.1286, "lon": 25.4001},  // University Campus
-            {"lat": 41.1156, "lon": 25.3989},  // West Komotini
-        ]
+        "center": {"lat": 41.11827569692981, "lon": 25.40374006496843},
+        "test_points": generateTestPoints(41.11827569692981, 25.40374006496843),
     };
+
+  // Method to open visualization map for a specific test
+  static void openVisualizationMap(BuildContext context, Map<String, dynamic> city, int k, int userAIdx, int userBIdx) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DetourTestMapPage(
+          city: city,
+          k: k,
+          userAIdx: userAIdx,
+          userBIdx: userBIdx,
+        ),
+      ),
+    );
+  }
+
+  // Method to run a single test with visualization option
+  static Future<void> runSingleTestWithVisualization(BuildContext context, Map<String, dynamic> city, int k, int userAIdx, int userBIdx) async {
+    debugPrint('Running single test: ${city['name']}, k=$k, User A: ${userAIdx + 1}, User B: ${userBIdx + 1}');
+    
+    try {
+      final result = await DetourRatioTest().runDetourTest(city, k, userAIdx, userBIdx, 0);
+      debugPrint('Test completed. Detour ratio: ${result['meeting_suggestion']['detour_ratio'].toStringAsFixed(2)}');
+      
+      if (context.mounted) {
+        // Show result dialog with option to visualize
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: Text('Test Result'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('City: ${city['name']}'),
+                  Text('k: $k'),
+                  Text('User A: Point ${userAIdx + 1}'),
+                  Text('User B: Point ${userBIdx + 1}'),
+                  SizedBox(height: 8),
+                  Text(
+                    'Detour Ratio: ${result['meeting_suggestion']['detour_ratio'].toStringAsFixed(2)}',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red),
+                  ),
+                  Text('City ID: ${result['meeting_suggestion']['city_id']}'),
+                  Text('Cluster ID: ${result['meeting_suggestion']['cluster_id']}'),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text('Close'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    openVisualizationMap(context, city, k, userAIdx, userBIdx);
+                  },
+                  child: Text('Visualize on Map'),
+                ),
+              ],
+            );
+          },
+        );
+      }
+    } catch (e) {
+      debugPrint('Test failed: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Test failed: $e')),
+        );
+      }
+    }
+  }
 
     static double calculateDetourRatio(
         double userLat, double userLon,
