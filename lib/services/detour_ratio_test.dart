@@ -373,7 +373,7 @@ class DetourRatioTest {
         final spatialDb = SpatialDb();
 
         // Get cloaked location for user A
-        final cloakedLocationA = await getCloakedLocation(
+        final userCloakedLocation = await getCloakedLocation(
             userSpatialPoint.lat,
             userSpatialPoint.lon,
             cloakingMode,
@@ -385,7 +385,7 @@ class DetourRatioTest {
         );
 
         // Create Point object for cloaked location
-        final userSPOI = Point(cloakedLocationA["lon"]!, cloakedLocationA["lat"]!);
+        final userSPOI = Point(userCloakedLocation["lon"]!, userCloakedLocation["lat"]!);
 
         // Process all other test points as contacts
         final contacts = <Map<String, dynamic>>[];
@@ -497,11 +497,11 @@ class DetourRatioTest {
             'generated_spoi': {
                 'lat': userSPOI.lat,
                 'lon': userSPOI.lon,
-                'cloaking_method': cloakedLocationA['cloaking_method'],
-                ...cloakedLocationA,
             },
-            'cloaking_parameters': cloakedLocationA,
             'k_value': k,
+            'radius_meters': 500,
+            'cell_size_meters': 500,
+            'cloaking_method': cloakingMode,
             'spoi_seed_info': spoiSeed.toString(),
             'meeting_seed_info': meetingSeed.toString(),
             'system_information': {
