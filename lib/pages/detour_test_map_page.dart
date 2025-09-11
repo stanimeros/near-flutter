@@ -134,12 +134,23 @@ class _DetourTestMapPageState extends State<DetourTestMapPage> {
       final meetingRandom = Random(meetingSeed);
       final selectedCluster = clusters[meetingRandom.nextInt(clusters.length)];
 
-      // Calculate detour ratio with first contact
-      final detourRatio = DetourRatioTest.calculateDetourRatio(
-        userPoint['lat'], userPoint['lon'],
-        firstContact['true_location']['lat'], firstContact['true_location']['lon'],
-        selectedCluster.corePoint.lat, selectedCluster.corePoint.lon,
-      );
+      // Calculate detour ratios for each user-contact pair
+      final detourRatios = <String, double>{};
+      var totalDetourRatio = 0.0;
+      
+      for (final contact in contacts) {
+        final detourRatio = DetourRatioTest.calculateDetourRatio(
+          userPoint['lat'], userPoint['lon'],
+          contact['true_location']['lat'], contact['true_location']['lon'],
+          selectedCluster.corePoint.lat, selectedCluster.corePoint.lon,
+        );
+        final pairKey = '${widget.userIdx + 1}-${contact['contact_id'].substring(1)}'; // e.g., "1-2" for U1-U2
+        detourRatios[pairKey] = detourRatio;
+        totalDetourRatio += detourRatio;
+      }
+
+      // Calculate average detour ratio
+      final avgDetourRatio = contacts.isEmpty ? 0.0 : totalDetourRatio / contacts.length;
 
       // Update state
       setState(() {
@@ -148,7 +159,8 @@ class _DetourTestMapPageState extends State<DetourTestMapPage> {
         _clusters = clusters;
         _selectedCluster = selectedCluster;
         _testResult = {
-          'detour_ratio': detourRatio,
+          'detour_ratios': detourRatios,
+          'avg_detour_ratio': avgDetourRatio,
           'spoi_seed': spoiSeed,
           'meeting_seed': meetingSeed,
         };
@@ -223,7 +235,7 @@ class _DetourTestMapPageState extends State<DetourTestMapPage> {
       markers.add(Marker(
         markerId: MarkerId('meeting_point'),
         position: LatLng(_selectedCluster!.corePoint.lat, _selectedCluster!.corePoint.lon),
-        infoWindow: InfoWindow(title: 'Meeting Point (Detour: ${_testResult?['detour_ratio']?.toStringAsFixed(2)})'),
+        infoWindow: InfoWindow(title: 'Meeting Point (Avg Detour: ${_testResult?['avg_detour_ratio']?.toStringAsFixed(2)})'),
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
       ));
     }
@@ -324,7 +336,7 @@ class _DetourTestMapPageState extends State<DetourTestMapPage> {
                           Text(' Meeting Point'),
                           if (_testResult != null) ...[
                           SizedBox(width: 4),
-                          Text('(Detour Ratio: ${_testResult!['detour_ratio'].toStringAsFixed(2)})', 
+                          Text('(Avg Detour Ratio: ${_testResult!['avg_detour_ratio'].toStringAsFixed(2)})', 
                                 style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
                           ],
                         ],

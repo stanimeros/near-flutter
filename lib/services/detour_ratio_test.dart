@@ -81,7 +81,12 @@ class DetourRatioTest {
     
     try {
       final result = await DetourRatioTest().runDetourTest(city, k, userIdx, 0);
-      debugPrint('Test completed. Detour ratio: ${result['meeting_suggestion']['detour_ratio'].toStringAsFixed(2)}');
+      debugPrint('Test completed. Average detour ratio: ${result['meeting_suggestion']['avg_detour_ratio'].toStringAsFixed(2)}');
+      
+      final detourRatios = result['meeting_suggestion']['detour_ratios'] as Map<String, dynamic>;
+      for (final entry in detourRatios.entries) {
+        debugPrint('  Pair U${entry.key}: ${entry.value.toStringAsFixed(2)}');
+      }
       
       if (context.mounted) {
         // Show result dialog with option to visualize
@@ -100,8 +105,13 @@ class DetourRatioTest {
                   Text('Number of contacts: ${result['returned_contacts'].length}'),
                   SizedBox(height: 8),
                   Text(
-                    'Detour Ratio: ${result['meeting_suggestion']['detour_ratio'].toStringAsFixed(2)}',
+                    'Average Detour Ratio: ${result['meeting_suggestion']['avg_detour_ratio'].toStringAsFixed(2)}',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red),
+                  ),
+                  SizedBox(height: 8),
+                  Text('Detour Ratios by Pair:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ...(result['meeting_suggestion']['detour_ratios'] as Map<String, dynamic>).entries.map((entry) => 
+                    Text('  U${entry.key}: ${entry.value.toStringAsFixed(2)}')
                   ),
                   Text('City: ${result['meeting_suggestion']['city_name']}'),
                   Text('City ID: ${result['meeting_suggestion']['city_id']}'),
@@ -171,7 +181,7 @@ class DetourRatioTest {
                     try {
                         final result = await runDetourTest(city, k, userIdx, testCount - 1);
                         results.add(result);
-                        debugPrint('Detour ratio: ${result['meeting_suggestion']['detour_ratio'].toStringAsFixed(2)}');
+                        debugPrint('Average detour ratio: ${result['meeting_suggestion']['avg_detour_ratio'].toStringAsFixed(2)}');
                         debugPrint('Number of contacts: ${result['returned_contacts'].length}');
                     } catch (e) {
                         debugPrint('Error: $e');
@@ -208,11 +218,15 @@ class DetourRatioTest {
                 
                 if (cityResults.isNotEmpty) {
                     for (final result in cityResults) {
-                        debugPrint(
-                            '  User ${result['user_id']}: '
-                            'Detour ratio = ${result['meeting_suggestion']['detour_ratio'].toStringAsFixed(2)}, '
-                            'Contacts = ${result['contact_ids'].join(', ')}'
-                        );
+                        final detourRatios = result['meeting_suggestion']['detour_ratios'] as Map<String, dynamic>;
+                        debugPrint('User ${result['user_id']}:');
+                        debugPrint('Average detour ratio = ${result['meeting_suggestion']['avg_detour_ratio'].toStringAsFixed(2)}');
+                        for (final entry in detourRatios.entries) {
+                            debugPrint(
+                                '    Pair U${entry.key}: '
+                                'Detour ratio = ${entry.value.toStringAsFixed(2)}'
+                            );
+                        }
                     }
                 }
             }
@@ -351,12 +365,23 @@ class DetourRatioTest {
         // Get the meeting point (first point in the cluster)
         final meetingPoint = selectedCluster.corePoint;
         
-        // Calculate detour ratio with first contact
-        final detourRatio = calculateDetourRatio(
-            userAPoint['lat'], userAPoint['lon'],
-            firstContact['true_location']['lat'], firstContact['true_location']['lon'],
-            meetingPoint.lat, meetingPoint.lon,
-        );
+        // Calculate detour ratios for each user-contact pair
+        final detourRatios = <String, double>{};
+        var totalDetourRatio = 0.0;
+        
+        for (final contact in contacts) {
+            final detourRatio = calculateDetourRatio(
+                userAPoint['lat'], userAPoint['lon'],
+                contact['true_location']['lat'], contact['true_location']['lon'],
+                meetingPoint.lat, meetingPoint.lon,
+            );
+            final pairKey = '${userAIdx + 1}-${contact['contact_id'].substring(1)}'; // e.g., "1-2" for U1-U2
+            detourRatios[pairKey] = detourRatio;
+            totalDetourRatio += detourRatio;
+        }
+
+        // Calculate average detour ratio
+        final avgDetourRatio = contacts.isEmpty ? 0.0 : totalDetourRatio / contacts.length;
 
         final data = await ResourceMonitor.getResourceUsage;
         final batteryLevel = (await Battery().batteryLevel).toDouble();
@@ -384,7 +409,8 @@ class DetourRatioTest {
                 'cluster_id': selectedCluster.id,
                 'meeting_point': {'lat': meetingPoint.lat, 'lon': meetingPoint.lon},
                 'accepted': true,
-                'detour_ratio': detourRatio,
+                'detour_ratios': detourRatios,
+                'avg_detour_ratio': avgDetourRatio,
             },
         };
     }
