@@ -146,8 +146,8 @@ class DetourRatioTest {
   }
 
     // Fixed radius cloaking method
-    static Map<String, double> fixedRadiusCloak(double lat, double lon, {double radiusMeters = 500}) {
-        final rand = Random();
+    static Map<String, double> fixedRadiusCloak(double lat, double lon, {double radiusMeters = 500, Random? random}) {
+        final rand = random ?? Random();
         final angle = rand.nextDouble() * 2 * pi;
         final dist = rand.nextDouble() * radiusMeters;
 
@@ -181,7 +181,7 @@ class DetourRatioTest {
     }
 
     // Two-hop privacy method (existing implementation)
-    static Future<Point> twoHopPrivacy(double lat, double lon, int k, SpatialDb db) async {
+    static Future<Point> twoHopPrivacy(double lat, double lon, int k, SpatialDb db, {Random? random}) async {
         // Step 1: Get 1 nearest point
         final nearestPoint = await db.getKNNs(1, lon, lat, 50, SpatialDb.pois, SpatialDb.cells);
         
@@ -192,9 +192,9 @@ class DetourRatioTest {
             throw Exception('No KNN points found');
         }
 
-        // Select random point from k nearest points
-        final spoiRandom = Random();
-        return knnPoints[spoiRandom.nextInt(knnPoints.length)];
+        // Select random point from k nearest points using provided or new random generator
+        final rand = random ?? Random();
+        return knnPoints[rand.nextInt(knnPoints.length)];
     }
 
     // Get cloaked location based on mode
@@ -205,11 +205,14 @@ class DetourRatioTest {
         {int k = 5, 
         double radiusMeters = 500, 
         double cellSizeMeters = 500,
-        required SpatialDb db}
+        required SpatialDb db,
+        Random? random}
     ) async {
+        final rand = random ?? Random();
+        
         switch (mode) {
             case "baseline_radius":
-                final cloaked = fixedRadiusCloak(lat, lon, radiusMeters: radiusMeters);
+                final cloaked = fixedRadiusCloak(lat, lon, radiusMeters: radiusMeters, random: rand);
                 return {
                     "lat": cloaked["lat"]!,
                     "lon": cloaked["lon"]!,
@@ -225,7 +228,7 @@ class DetourRatioTest {
                     "cell_size_meters": cellSizeMeters,
                 };
             default:
-                final cloaked = await twoHopPrivacy(lat, lon, k, db);
+                final cloaked = await twoHopPrivacy(lat, lon, k, db, random: rand);
                 return {
                     "lat": cloaked.lat,
                     "lon": cloaked.lon,
@@ -362,8 +365,14 @@ class DetourRatioTest {
         // Create Point object for spatial database
         final userSpatialPoint = Point(userPoint['lon'], userPoint['lat']);
         
-        // Get cloaked location for user A
+        // Create a single random generator for all SPOIs
         final spoiSeed = DateTime.now().millisecondsSinceEpoch;
+        final spoiRandom = Random(spoiSeed);
+
+        // Create a single SpatialDb instance to use for all queries
+        final spatialDb = SpatialDb();
+
+        // Get cloaked location for user A
         final cloakedLocationA = await getCloakedLocation(
             userSpatialPoint.lat,
             userSpatialPoint.lon,
@@ -371,7 +380,8 @@ class DetourRatioTest {
             k: k,
             radiusMeters: 500,
             cellSizeMeters: 500,
-            db: SpatialDb(),
+            db: spatialDb,
+            random: spoiRandom,
         );
 
         // Create Point object for cloaked location
@@ -386,7 +396,7 @@ class DetourRatioTest {
             final contactPoint = city['test_points'][contactIdx];
             final contactSpatialPoint = Point(contactPoint['lon'], contactPoint['lat']);
 
-            // Get cloaked location for contact
+            // Get cloaked location for contact using the same random generator
             final cloakedLocationContact = await getCloakedLocation(
                 contactSpatialPoint.lat,
                 contactSpatialPoint.lon,
@@ -394,7 +404,8 @@ class DetourRatioTest {
                 k: k,
                 radiusMeters: 500,
                 cellSizeMeters: 500,
-                db: SpatialDb(),
+                db: spatialDb,
+                random: spoiRandom,
             );
 
             final contactSPOI = Point(cloakedLocationContact["lon"]!, cloakedLocationContact["lat"]!);
