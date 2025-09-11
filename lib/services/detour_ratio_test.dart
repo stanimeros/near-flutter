@@ -41,8 +41,8 @@ class DetourRatioTest {
         return [
             {"lat": centerLat, "lon": centerLon},  // Point 1: City center
             calculateDestinationPoint(centerLat, centerLon, 1000, -60),
-            calculateDestinationPoint(centerLat, centerLon, 1000, 30),
-            calculateDestinationPoint(centerLat, centerLon, 1000, 0),
+            calculateDestinationPoint(centerLat, centerLon, 700, 30),
+            calculateDestinationPoint(centerLat, centerLon, 300, 0),
         ];
     }
 
@@ -196,21 +196,24 @@ class DetourRatioTest {
 
         await shareResults(results);
         
-        // Print summary statistics
-        debugPrint('\n=== Summary Statistics ===');
+        // Print detailed test results
+        debugPrint('\n=== Test Results ===');
         for (final city in cities) {
             debugPrint('\n${city['name']}:');
             for (final k in kValues) {
+                debugPrint('\nk=$k:');
                 final cityResults = results.where((r) => 
                     r['meeting_suggestion']['city_id'] == city['city_id'] && r['k_value'] == k
                 ).toList();
                 
                 if (cityResults.isNotEmpty) {
-                    final avgDetourRatio = cityResults
-                        .map((r) => r['meeting_suggestion']['detour_ratio'] as double)
-                        .reduce((a, b) => a + b) / cityResults.length;
-                    
-                    debugPrint('  k=$k: Average detour ratio = ${avgDetourRatio.toStringAsFixed(2)}');
+                    for (final result in cityResults) {
+                        debugPrint(
+                            '  User ${result['user_id']}: '
+                            'Detour ratio = ${result['meeting_suggestion']['detour_ratio'].toStringAsFixed(2)}, '
+                            'Contacts = ${result['contact_ids'].join(', ')}'
+                        );
+                    }
                 }
             }
         }

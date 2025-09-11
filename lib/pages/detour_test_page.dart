@@ -11,8 +11,7 @@ class DetourTestPage extends StatefulWidget {
 class _DetourTestPageState extends State<DetourTestPage> {
   String _selectedCity = 'ΘΕΣΣΑΛΟΝΙΚΗΣ';
   int _selectedK = 5;
-  int _selectedUserA = 0;
-  int _selectedUserB = 1;
+  int _selectedUser = 0;
   bool _isRunning = false;
 
   final List<String> _cities = ['ΘΕΣΣΑΛΟΝΙΚΗΣ', 'ΚΟΜΟΤΗΝΗΣ'];
@@ -77,10 +76,10 @@ class _DetourTestPageState extends State<DetourTestPage> {
               ),
               SizedBox(height: 16),
               
-              // User A Selection
-              Text('User A Point:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+              // Main User Selection
+              Text('Main User Point:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
               DropdownButton<int>(
-                value: _selectedUserA,
+                value: _selectedUser,
                 isExpanded: true,
                 items: _userPoints.map((int point) {
                   return DropdownMenuItem<int>(
@@ -90,30 +89,7 @@ class _DetourTestPageState extends State<DetourTestPage> {
                 }).toList(),
                 onChanged: (int? newValue) {
                   setState(() {
-                    _selectedUserA = newValue!;
-                    // Ensure User B is different from User A
-                    if (_selectedUserB == _selectedUserA) {
-                      _selectedUserB = (_selectedUserA + 1) % 5;
-                    }
-                  });
-                },
-              ),
-              SizedBox(height: 16),
-              
-              // User B Selection
-              Text('User B Point:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-              DropdownButton<int>(
-                value: _selectedUserB,
-                isExpanded: true,
-                items: _userPoints.where((int point) => point != _selectedUserA).map((int point) {
-                  return DropdownMenuItem<int>(
-                    value: point,
-                    child: Text('Point ${point + 1}'),
-                  );
-                }).toList(),
-                onChanged: (int? newValue) {
-                  setState(() {
-                    _selectedUserB = newValue!;
+                    _selectedUser = newValue!;
                   });
                 },
               ),
@@ -204,7 +180,7 @@ class _DetourTestPageState extends State<DetourTestPage> {
         context,
         city,
         _selectedK,
-        _selectedUserA,
+        _selectedUser,
       );
     } catch (e) {
       if (mounted) {

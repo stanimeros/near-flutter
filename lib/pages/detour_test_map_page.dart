@@ -28,7 +28,6 @@ class _DetourTestMapPageState extends State<DetourTestMapPage> {
   Set<Marker> _markers = {};
   
   // Test data
-  List<Point> _userKNNs = [];
   Point? _userSPOI;
   List<Map<String, dynamic>> _contacts = [];
   List<NearCluster> _clusters = [];
@@ -144,7 +143,6 @@ class _DetourTestMapPageState extends State<DetourTestMapPage> {
 
       // Update state
       setState(() {
-        _userKNNs = userKNNs;
         _userSPOI = userSPOI;
         _contacts = contacts;
         _clusters = clusters;
@@ -189,15 +187,6 @@ class _DetourTestMapPageState extends State<DetourTestMapPage> {
       ));
     }
 
-    // User KNN points
-    for (int i = 0; i < _userKNNs.length; i++) {
-      markers.add(Marker(
-        markerId: MarkerId('user_knn_$i'),
-        position: LatLng(_userKNNs[i].lat, _userKNNs[i].lon),
-        infoWindow: InfoWindow(title: 'User KNN $i'),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-      ));
-    }
 
     // User SPOI
     if (_userSPOI != null) {
@@ -315,12 +304,6 @@ class _DetourTestMapPageState extends State<DetourTestMapPage> {
                         children: [
                           Icon(Icons.location_on, color: Colors.blue),
                           Text(' True Locations (${_contacts.length + 1})'),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          Icon(Icons.location_on, color: Colors.green),
-                          Text(' User KNN Points (${_userKNNs.length})'),
                         ],
                       ),
                       Row(
