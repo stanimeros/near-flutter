@@ -76,11 +76,11 @@ class DetourRatioTest {
   }
 
   // Method to run a single test with visualization option
-  static Future<void> runSingleTestWithVisualization(BuildContext context, Map<String, dynamic> city, int k, int userIdx) async {
+  static Future<void> runSingleTestWithVisualization(BuildContext context, Map<String, dynamic> city, int k, int userIdx, [String cloakingMode = "baseline_radius"]) async {
     debugPrint('Running single test: ${city['name']}, k=$k, User at point ${userIdx + 1}');
     
     try {
-      final result = await DetourRatioTest().runDetourTest(city, k, userIdx, 0);
+      final result = await DetourRatioTest().runDetourTest(city, k, userIdx, 0, cloakingMode);
       debugPrint('Test completed. Average detour ratio: ${result['meeting_suggestion']['avg_detour_ratio'].toStringAsFixed(2)}');
       
       final detourRatios = result['meeting_suggestion']['detour_ratios'] as Map<String, dynamic>;
@@ -145,6 +145,96 @@ class DetourRatioTest {
     }
   }
 
+    // Fixed radius cloaking method
+    static Map<String, double> fixedRadiusCloak(double lat, double lon, {double radiusMeters = 500}) {
+        final rand = Random();
+        final angle = rand.nextDouble() * 2 * pi;
+        final dist = rand.nextDouble() * radiusMeters;
+
+        final deltaLat = (dist * cos(angle)) / 111000;
+        final deltaLon = (dist * sin(angle)) / (111000 * cos(lat * pi / 180));
+
+        return {
+            "lat": lat + deltaLat,
+            "lon": lon + deltaLon,
+        };
+    }
+
+    // Grid-based cloaking method
+    static Map<String, double> gridCloak(double lat, double lon, {double cellSizeMeters = 500}) {
+        final latMeters = 111000.0;
+        final lonMeters = 111000.0 * cos(lat * pi / 180);
+
+        final x = lon * lonMeters;
+        final y = lat * latMeters;
+
+        final xSnap = (x / cellSizeMeters).round() * cellSizeMeters;
+        final ySnap = (y / cellSizeMeters).round() * cellSizeMeters;
+
+        final cloakedLon = xSnap / lonMeters;
+        final cloakedLat = ySnap / latMeters;
+
+        return {
+            "lat": cloakedLat,
+            "lon": cloakedLon,
+        };
+    }
+
+    // Two-hop privacy method (existing implementation)
+    static Future<Point> twoHopPrivacy(double lat, double lon, int k, SpatialDb db) async {
+        // Step 1: Get 1 nearest point
+        final nearestPoint = await db.getKNNs(1, lon, lat, 50, SpatialDb.pois, SpatialDb.cells);
+        
+        // Step 2: Get k nearest points from nearest point location
+        final knnPoints = await db.getKNNs(k, nearestPoint.first.lon, nearestPoint.first.lat, 50, SpatialDb.pois, SpatialDb.cells);
+
+        if (knnPoints.isEmpty) {
+            throw Exception('No KNN points found');
+        }
+
+        // Select random point from k nearest points
+        final spoiRandom = Random();
+        return knnPoints[spoiRandom.nextInt(knnPoints.length)];
+    }
+
+    // Get cloaked location based on mode
+    static Future<Map<String, dynamic>> getCloakedLocation(
+        double lat, 
+        double lon, 
+        String mode, 
+        {int k = 5, 
+        double radiusMeters = 500, 
+        double cellSizeMeters = 500,
+        required SpatialDb db}
+    ) async {
+        switch (mode) {
+            case "baseline_radius":
+                final cloaked = fixedRadiusCloak(lat, lon, radiusMeters: radiusMeters);
+                return {
+                    "lat": cloaked["lat"]!,
+                    "lon": cloaked["lon"]!,
+                    "cloaking_method": "fixed_radius",
+                    "radius_meters": radiusMeters,
+                };
+            case "baseline_grid":
+                final cloaked = gridCloak(lat, lon, cellSizeMeters: cellSizeMeters);
+                return {
+                    "lat": cloaked["lat"]!,
+                    "lon": cloaked["lon"]!,
+                    "cloaking_method": "grid",
+                    "cell_size_meters": cellSizeMeters,
+                };
+            default:
+                final cloaked = await twoHopPrivacy(lat, lon, k, db);
+                return {
+                    "lat": cloaked.lat,
+                    "lon": cloaked.lon,
+                    "cloaking_method": "2hp",
+                    "k_value": k,
+                };
+        }
+    }
+
     static double calculateDetourRatio(
         double userLat, double userLon,
         double contactLat, double contactLon,
@@ -163,6 +253,7 @@ class DetourRatioTest {
         
         final kValues = [5, 25, 100];
         final cities = [thessaloniki, komotini];
+        final cloakingModes = ["baseline_radius", "baseline_grid", "2hp"];
         final results = <Map<String, dynamic>>[];
 
         for (final city in cities) {
@@ -171,22 +262,35 @@ class DetourRatioTest {
             for (final k in kValues) {
                 debugPrint('\nTesting with k=$k');
                 
-                // Test each point as the user with all other points as contacts
-                final testPoints = city['test_points'] as List;
-                int testCount = 0;
-                
-                for (int userIdx = 0; userIdx < testPoints.length; userIdx++) {
-                    testCount++;
-                    debugPrint('Test $testCount/${testPoints.length}: User at point ${userIdx + 1} with all other points as contacts');
-                    try {
-                        final result = await runDetourTest(city, k, userIdx, testCount - 1);
-                        results.add(result);
-                        debugPrint('Average detour ratio: ${result['meeting_suggestion']['avg_detour_ratio'].toStringAsFixed(2)}');
-                        debugPrint('Number of contacts: ${result['returned_contacts'].length}');
-                    } catch (e) {
-                        debugPrint('Error: $e');
-                        // Still wait even if there's an error to prevent rapid retries
-                        await Future.delayed(Duration(seconds: 2));
+                for (final mode in cloakingModes) {
+                    debugPrint('\nTesting with cloaking method: $mode');
+                    
+                    // Test each point as the user with all other points as contacts
+                    final testPoints = city['test_points'] as List;
+                    int testCount = 0;
+                    
+                    for (int userIdx = 0; userIdx < testPoints.length; userIdx++) {
+                        testCount++;
+                        debugPrint('Test $testCount/${testPoints.length}: User at point ${userIdx + 1} with all other points as contacts');
+                        try {
+                            // Override the cloaking mode for this test
+                            final result = await runDetourTest(city, k, userIdx, testCount - 1, mode);
+                            results.add(result);
+                            final methodName = result['generated_spoi']['cloaking_method'];
+                            debugPrint('Cloaking method: $methodName');
+                            debugPrint('Average detour ratio: ${result['meeting_suggestion']['avg_detour_ratio'].toStringAsFixed(2)}');
+                            debugPrint('Number of contacts: ${result['returned_contacts'].length}');
+                        } catch (e) {
+                            debugPrint('Error: $e');
+                            // Still wait even if there's an error to prevent rapid retries
+                            await Future.delayed(Duration(seconds: 2));
+                        }
+                    }
+                    
+                    // Add extra delay between different cloaking modes
+                    if (mode != cloakingModes.last) {
+                        debugPrint('Completed $mode tests');
+                        await Future.delayed(Duration(seconds: 1));
                     }
                 }
                 
@@ -210,22 +314,34 @@ class DetourRatioTest {
         debugPrint('\n=== Test Results ===');
         for (final city in cities) {
             debugPrint('\n${city['name']}:');
-            for (final k in kValues) {
-                debugPrint('\nk=$k:');
-                final cityResults = results.where((r) => 
-                    r['meeting_suggestion']['city_id'] == city['city_id'] && r['k_value'] == k
-                ).toList();
-                
-                if (cityResults.isNotEmpty) {
-                    for (final result in cityResults) {
-                        final detourRatios = result['meeting_suggestion']['detour_ratios'] as Map<String, dynamic>;
-                        debugPrint('User ${result['user_id']}:');
-                        debugPrint('Average detour ratio = ${result['meeting_suggestion']['avg_detour_ratio'].toStringAsFixed(2)}');
-                        for (final entry in detourRatios.entries) {
-                            debugPrint(
-                                '    Pair U${entry.key}: '
-                                'Detour ratio = ${entry.value.toStringAsFixed(2)}'
-                            );
+            for (final mode in cloakingModes) {
+                debugPrint('\nCloaking Method: $mode');
+                for (final k in kValues) {
+                    debugPrint('\n  k=$k:');
+                    final cityResults = results.where((r) => 
+                        r['meeting_suggestion']['city_id'] == city['city_id'] && 
+                        r['k_value'] == k &&
+                        r['generated_spoi']['cloaking_method'] == mode
+                    ).toList();
+                    
+                    if (cityResults.isNotEmpty) {
+                        // Calculate average detour ratio across all tests for this configuration
+                        final avgDetourRatio = cityResults
+                            .map((r) => r['meeting_suggestion']['avg_detour_ratio'] as double)
+                            .reduce((a, b) => a + b) / cityResults.length;
+                            
+                        debugPrint('  Average detour ratio across all tests: ${avgDetourRatio.toStringAsFixed(2)}');
+                        
+                        for (final result in cityResults) {
+                            final detourRatios = result['meeting_suggestion']['detour_ratios'] as Map<String, dynamic>;
+                            debugPrint('\n    User ${result['user_id']}:');
+                            debugPrint('      Average detour ratio = ${result['meeting_suggestion']['avg_detour_ratio'].toStringAsFixed(2)}');
+                            for (final entry in detourRatios.entries) {
+                                debugPrint(
+                                    '      Contact ${entry.key}: '
+                                    'Detour ratio = ${entry.value.toStringAsFixed(2)}'
+                                );
+                            }
                         }
                     }
                 }
@@ -236,83 +352,60 @@ class DetourRatioTest {
     Future<Map<String, dynamic>> runDetourTest(
         Map<String, dynamic> city,
         int k,
-        int userAIdx,
+        int userIdx,
         int meetingAttempt,
+        [String cloakingMode = "baseline_radius"]
     ) async {
         // Setup test point for User A
-        final userAPoint = city['test_points'][userAIdx];
+        final userPoint = city['test_points'][userIdx];
         
         // Create Point object for spatial database
-        final userASpatialPoint = Point(userAPoint['lon'], userAPoint['lat']);
+        final userSpatialPoint = Point(userPoint['lon'], userPoint['lat']);
         
-        // Generate SPOI for user A using two-step approach
-        
-        // Step 1: Get 1 nearest point for User A
-        final nearestPointA = await SpatialDb().getKNNs(
-            1,
-            userASpatialPoint.lon,
-            userASpatialPoint.lat,
-            50,
-            SpatialDb.pois,
-            SpatialDb.cells,
-        );
-        
-        // Step 2: Get k nearest points from User A's nearest point location
-        final userAKNNs = await SpatialDb().getKNNs(
-            k,
-            nearestPointA.first.lon,
-            nearestPointA.first.lat,
-            50,
-            SpatialDb.pois,
-            SpatialDb.cells,
+        // Get cloaked location for user A
+        final spoiSeed = DateTime.now().millisecondsSinceEpoch;
+        final cloakedLocationA = await getCloakedLocation(
+            userSpatialPoint.lat,
+            userSpatialPoint.lon,
+            cloakingMode,
+            k: k,
+            radiusMeters: 500,
+            cellSizeMeters: 500,
+            db: SpatialDb(),
         );
 
-        if (userAKNNs.isEmpty) {
-            throw Exception('No KNN points found for user');
-        }
+        // Create Point object for cloaked location
+        final userSPOI = Point(cloakedLocationA["lon"]!, cloakedLocationA["lat"]!);
 
         // Process all other test points as contacts
         final contacts = <Map<String, dynamic>>[];
-        final spoiSeed = DateTime.now().millisecondsSinceEpoch;
-        final spoiRandom = Random(spoiSeed);
-        final userASPOI = userAKNNs[spoiRandom.nextInt(userAKNNs.length)];
 
         for (int contactIdx = 0; contactIdx < city['test_points'].length; contactIdx++) {
-            if (contactIdx == userAIdx) continue; // Skip self
+            if (contactIdx == userIdx) continue; // Skip self
 
             final contactPoint = city['test_points'][contactIdx];
             final contactSpatialPoint = Point(contactPoint['lon'], contactPoint['lat']);
 
-            // Generate SPOI for contact
-            final nearestPointContact = await SpatialDb().getKNNs(
-                1,
-                contactSpatialPoint.lon,
+            // Get cloaked location for contact
+            final cloakedLocationContact = await getCloakedLocation(
                 contactSpatialPoint.lat,
-                50,
-                SpatialDb.pois,
-                SpatialDb.cells,
+                contactSpatialPoint.lon,
+                cloakingMode,
+                k: k,
+                radiusMeters: 500,
+                cellSizeMeters: 500,
+                db: SpatialDb(),
             );
 
-            final contactKNNs = await SpatialDb().getKNNs(
-                k,
-                nearestPointContact.first.lon,
-                nearestPointContact.first.lat,
-                50,
-                SpatialDb.pois,
-                SpatialDb.cells,
-            );
-
-            if (contactKNNs.isEmpty) continue;
-
-            final contactSPOI = contactKNNs[spoiRandom.nextInt(contactKNNs.length)];
+            final contactSPOI = Point(cloakedLocationContact["lon"]!, cloakedLocationContact["lat"]!);
             
             // Calculate distances
             final trueDistance = Geolocator.distanceBetween(
-                userAPoint['lat'], userAPoint['lon'],
+                userPoint['lat'], userPoint['lon'],
                 contactPoint['lat'], contactPoint['lon'],
             );
             final nearDistance = Geolocator.distanceBetween(
-                userASPOI.lat, userASPOI.lon,
+                userSPOI.lat, userSPOI.lon,
                 contactSPOI.lat, contactSPOI.lon,
             );
 
@@ -345,7 +438,7 @@ class DetourRatioTest {
         final firstContact = contacts.first;
         final clustersStartTime = DateTime.now();
         final clusters = await SpatialDb().getClustersBetweenTwoPoints(
-            userASPOI,
+            userSPOI,
             Point(
                 firstContact['generated_spoi']['lon'],
                 firstContact['generated_spoi']['lat'],
@@ -371,12 +464,11 @@ class DetourRatioTest {
         
         for (final contact in contacts) {
             final detourRatio = calculateDetourRatio(
-                userAPoint['lat'], userAPoint['lon'],
+                userPoint['lat'], userPoint['lon'],
                 contact['true_location']['lat'], contact['true_location']['lon'],
                 meetingPoint.lat, meetingPoint.lon,
             );
-            final pairKey = '${userAIdx + 1}-${contact['contact_id'].substring(1)}'; // e.g., "1-2" for U1-U2
-            detourRatios[pairKey] = detourRatio;
+            detourRatios[contact['contact_id']] = detourRatio;
             totalDetourRatio += detourRatio;
         }
 
@@ -388,11 +480,16 @@ class DetourRatioTest {
         
         return {
             'timestamp': DateTime.now().toUtc().toIso8601String(),
-            'user_id': 'U${userAIdx + 1}',
+            'user_id': 'U${userIdx + 1}',
             'contact_ids': contacts.map((c) => c['contact_id']).toList(),
-            'true_location': {'lat': userAPoint['lat'], 'lon': userAPoint['lon']},
-            'generated_spoi': {'lat': userASPOI.lat, 'lon': userASPOI.lon},
-            'candidate_spois': userAKNNs.map((p) => {'lat': p.lat, 'lon': p.lon}).toList(),
+            'true_location': {'lat': userPoint['lat'], 'lon': userPoint['lon']},
+            'generated_spoi': {
+                'lat': userSPOI.lat,
+                'lon': userSPOI.lon,
+                'cloaking_method': cloakedLocationA['cloaking_method'],
+                ...cloakedLocationA,
+            },
+            'cloaking_parameters': cloakedLocationA,
             'k_value': k,
             'spoi_seed_info': spoiSeed.toString(),
             'meeting_seed_info': meetingSeed.toString(),

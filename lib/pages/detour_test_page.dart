@@ -12,11 +12,17 @@ class _DetourTestPageState extends State<DetourTestPage> {
   String _selectedCity = 'ΘΕΣΣΑΛΟΝΙΚΗΣ';
   int _selectedK = 5;
   int _selectedUser = 0;
+  String _selectedCloakingMode = 'baseline_radius';
   bool _isRunning = false;
 
   final List<String> _cities = ['ΘΕΣΣΑΛΟΝΙΚΗΣ', 'ΚΟΜΟΤΗΝΗΣ'];
   final List<int> _kValues = [5, 25, 100];
   final List<int> _userPoints = [0, 1, 2, 3, 4];
+  final Map<String, String> _cloakingModes = {
+    'baseline_radius': 'Fixed Radius (500m)',
+    'baseline_grid': 'Grid Cell (500m)',
+    '2hp': 'Two-Hop Privacy',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -90,6 +96,25 @@ class _DetourTestPageState extends State<DetourTestPage> {
                 onChanged: (int? newValue) {
                   setState(() {
                     _selectedUser = newValue!;
+                  });
+                },
+              ),
+              SizedBox(height: 16),
+
+              // Cloaking Method Selection
+              Text('Cloaking Method:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+              DropdownButton<String>(
+                value: _selectedCloakingMode,
+                isExpanded: true,
+                items: _cloakingModes.entries.map((entry) {
+                  return DropdownMenuItem<String>(
+                    value: entry.key,
+                    child: Text(entry.value),
+                  );
+                }).toList(),
+                onChanged: (String? newValue) {
+                  setState(() {
+                    _selectedCloakingMode = newValue!;
                   });
                 },
               ),
@@ -181,6 +206,7 @@ class _DetourTestPageState extends State<DetourTestPage> {
         city,
         _selectedK,
         _selectedUser,
+        _selectedCloakingMode,
       );
     } catch (e) {
       if (mounted) {
