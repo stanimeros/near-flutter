@@ -205,7 +205,6 @@ class _DetourTestPageState extends State<DetourTestPage> {
         city,
         _selectedK,
         _selectedUserA,
-        _selectedUserB,
       );
     } catch (e) {
       if (mounted) {

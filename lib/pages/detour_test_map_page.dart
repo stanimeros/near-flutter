@@ -4,20 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter_near/services/spatial_db.dart';
 import 'package:flutter_near/services/detour_ratio_test.dart';
+import 'package:geolocator/geolocator.dart';
 import 'dart:math';
 
 class DetourTestMapPage extends StatefulWidget {
   final Map<String, dynamic> city;
   final int k;
-  final int userAIdx;
-  final int userBIdx;
+  final int userIdx;
 
   const DetourTestMapPage({
     super.key,
     required this.city,
     required this.k,
-    required this.userAIdx,
-    required this.userBIdx,
+    required this.userIdx,
   });
 
   @override
@@ -29,10 +28,9 @@ class _DetourTestMapPageState extends State<DetourTestMapPage> {
   Set<Marker> _markers = {};
   
   // Test data
-  List<Point> _userAKNNs = [];
-  List<Point> _userBKNNs = [];
-  Point? _userASPOI;
-  Point? _userBSPOI;
+  List<Point> _userKNNs = [];
+  Point? _userSPOI;
+  List<Map<String, dynamic>> _contacts = [];
   List<NearCluster> _clusters = [];
   NearCluster? _selectedCluster;
   Map<String, dynamic>? _testResult;
@@ -46,47 +44,109 @@ class _DetourTestMapPageState extends State<DetourTestMapPage> {
   Future<void> _runDetourTest() async {
     try {
       // Get test points
-      final userAPoint = widget.city['test_points'][widget.userAIdx];
-      final userBPoint = widget.city['test_points'][widget.userBIdx];
+      final userPoint = widget.city['test_points'][widget.userIdx];
       
-      // Create Point objects
-      final userASpatialPoint = Point(userAPoint['lon'], userAPoint['lat']);
-      final userBSpatialPoint = Point(userBPoint['lon'], userBPoint['lat']);
+      // Create Point object
+      final userSpatialPoint = Point(userPoint['lon'], userPoint['lat']);
 
       // Generate SPOIs using 2HP approach
-      final nearestPointA = await SpatialDb().getKNNs(1, userASpatialPoint.lon, userASpatialPoint.lat, 50, SpatialDb.pois, SpatialDb.cells);
-      final userAKNNs = await SpatialDb().getKNNs(widget.k, nearestPointA.first.lon, nearestPointA.first.lat, 50, SpatialDb.pois, SpatialDb.cells);
-      
-      final nearestPointB = await SpatialDb().getKNNs(1, userBSpatialPoint.lon, userBSpatialPoint.lat, 50, SpatialDb.pois, SpatialDb.cells);
-      final userBKNNs = await SpatialDb().getKNNs(widget.k, nearestPointB.first.lon, nearestPointB.first.lat, 50, SpatialDb.pois, SpatialDb.cells);
+      final nearestPoint = await SpatialDb().getKNNs(1, userSpatialPoint.lon, userSpatialPoint.lat, 50, SpatialDb.pois, SpatialDb.cells);
+      final userKNNs = await SpatialDb().getKNNs(widget.k, nearestPoint.first.lon, nearestPoint.first.lat, 50, SpatialDb.pois, SpatialDb.cells);
 
-      // Select random SPOIs
+      if (userKNNs.isEmpty) {
+        throw Exception('No KNN points found for user');
+      }
+
+      // Process all other test points as contacts
+      final contacts = <Map<String, dynamic>>[];
       final spoiSeed = DateTime.now().millisecondsSinceEpoch;
       final spoiRandom = Random(spoiSeed);
-      final userASPOI = userAKNNs[spoiRandom.nextInt(userAKNNs.length)];
-      final userBSPOI = userBKNNs[spoiRandom.nextInt(userBKNNs.length)];
+      final userSPOI = userKNNs[spoiRandom.nextInt(userKNNs.length)];
 
-      // Get clusters
-      final clusters = await SpatialDb().getClustersBetweenTwoPoints(userASPOI, userBSPOI);
+      for (int contactIdx = 0; contactIdx < widget.city['test_points'].length; contactIdx++) {
+        if (contactIdx == widget.userIdx) continue; // Skip self
+
+        final contactPoint = widget.city['test_points'][contactIdx];
+        final contactSpatialPoint = Point(contactPoint['lon'], contactPoint['lat']);
+
+        // Generate SPOI for contact
+        final nearestPointContact = await SpatialDb().getKNNs(
+          1,
+          contactSpatialPoint.lon,
+          contactSpatialPoint.lat,
+          50,
+          SpatialDb.pois,
+          SpatialDb.cells,
+        );
+
+        final contactKNNs = await SpatialDb().getKNNs(
+          widget.k,
+          nearestPointContact.first.lon,
+          nearestPointContact.first.lat,
+          50,
+          SpatialDb.pois,
+          SpatialDb.cells,
+        );
+
+        if (contactKNNs.isEmpty) continue;
+
+        final contactSPOI = contactKNNs[spoiRandom.nextInt(contactKNNs.length)];
+        
+        // Calculate distances
+        final trueDistance = Geolocator.distanceBetween(
+          userPoint['lat'], userPoint['lon'],
+          contactPoint['lat'], contactPoint['lon'],
+        );
+        final nearDistance = Geolocator.distanceBetween(
+          userSPOI.lat, userSPOI.lon,
+          contactSPOI.lat, contactSPOI.lon,
+        );
+
+        contacts.add({
+          'contact_id': 'U${contactIdx + 1}',
+          'true_location': {'lat': contactPoint['lat'], 'lon': contactPoint['lon']},
+          'generated_spoi': {'lat': contactSPOI.lat, 'lon': contactSPOI.lon},
+          'true_distance_m': trueDistance,
+          'near_distance_m': nearDistance,
+          'reported_rank': contacts.length + 1,
+        });
+      }
+
+      if (contacts.isEmpty) {
+        throw Exception('No valid contacts found');
+      }
+
+      // Get clusters between the user's SPOI and the first contact's SPOI
+      final firstContact = contacts.first;
+      final clusters = await SpatialDb().getClustersBetweenTwoPoints(
+        userSPOI,
+        Point(
+          firstContact['generated_spoi']['lon'],
+          firstContact['generated_spoi']['lat'],
+        ),
+      );
+      
+      if (clusters.isEmpty) {
+        throw Exception('No clusters found between SPOIs');
+      }
       
       // Select random cluster
       final meetingSeed = DateTime.now().millisecondsSinceEpoch;
       final meetingRandom = Random(meetingSeed);
       final selectedCluster = clusters[meetingRandom.nextInt(clusters.length)];
 
-      // Calculate detour ratio
+      // Calculate detour ratio with first contact
       final detourRatio = DetourRatioTest.calculateDetourRatio(
-        userAPoint['lat'], userAPoint['lon'],
-        userBPoint['lat'], userBPoint['lon'],
+        userPoint['lat'], userPoint['lon'],
+        firstContact['true_location']['lat'], firstContact['true_location']['lon'],
         selectedCluster.corePoint.lat, selectedCluster.corePoint.lon,
       );
 
       // Update state
       setState(() {
-        _userAKNNs = userAKNNs;
-        _userBKNNs = userBKNNs;
-        _userASPOI = userASPOI;
-        _userBSPOI = userBSPOI;
+        _userKNNs = userKNNs;
+        _userSPOI = userSPOI;
+        _contacts = contacts;
         _clusters = clusters;
         _selectedCluster = selectedCluster;
         _testResult = {
@@ -97,7 +157,7 @@ class _DetourTestMapPageState extends State<DetourTestMapPage> {
       });
 
       // Update map markers
-      _updateMapMarkers(userAPoint, userBPoint);
+      _updateMapMarkers(userPoint);
       
     } catch (e) {
       if (mounted) {
@@ -108,59 +168,53 @@ class _DetourTestMapPageState extends State<DetourTestMapPage> {
     }
   }
 
-  void _updateMapMarkers(Map<String, double> userAPoint, Map<String, double> userBPoint) {
+  void _updateMapMarkers(Map<String, double> userPoint) {
     Set<Marker> markers = {};
 
-    // User true locations
+    // User true location
     markers.add(Marker(
-      markerId: MarkerId('user_a_true'),
-      position: LatLng(userAPoint['lat']!, userAPoint['lon']!),
-      infoWindow: InfoWindow(title: 'User A (True Location)'),
+      markerId: MarkerId('user_true'),
+      position: LatLng(userPoint['lat']!, userPoint['lon']!),
+      infoWindow: InfoWindow(title: 'User (True Location)'),
       icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
     ));
 
-    markers.add(Marker(
-      markerId: MarkerId('user_b_true'),
-      position: LatLng(userBPoint['lat']!, userBPoint['lon']!),
-      infoWindow: InfoWindow(title: 'User B (True Location)'),
-      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-    ));
-
-    // User A KNN points
-    for (int i = 0; i < _userAKNNs.length; i++) {
+    // Contact true locations
+    for (final contact in _contacts) {
       markers.add(Marker(
-        markerId: MarkerId('user_a_knn_$i'),
-        position: LatLng(_userAKNNs[i].lat, _userAKNNs[i].lon),
-        infoWindow: InfoWindow(title: 'User A KNN $i'),
+        markerId: MarkerId('${contact['contact_id']}_true'),
+        position: LatLng(contact['true_location']['lat'], contact['true_location']['lon']),
+        infoWindow: InfoWindow(title: '${contact['contact_id']} (True Location)'),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+      ));
+    }
+
+    // User KNN points
+    for (int i = 0; i < _userKNNs.length; i++) {
+      markers.add(Marker(
+        markerId: MarkerId('user_knn_$i'),
+        position: LatLng(_userKNNs[i].lat, _userKNNs[i].lon),
+        infoWindow: InfoWindow(title: 'User KNN $i'),
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
       ));
     }
 
-    // User B KNN points
-    for (int i = 0; i < _userBKNNs.length; i++) {
+    // User SPOI
+    if (_userSPOI != null) {
       markers.add(Marker(
-        markerId: MarkerId('user_b_knn_$i'),
-        position: LatLng(_userBKNNs[i].lat, _userBKNNs[i].lon),
-        infoWindow: InfoWindow(title: 'User B KNN $i'),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-      ));
-    }
-
-    // Selected SPOIs
-    if (_userASPOI != null) {
-      markers.add(Marker(
-        markerId: MarkerId('user_a_spoi'),
-        position: LatLng(_userASPOI!.lat, _userASPOI!.lon),
-        infoWindow: InfoWindow(title: 'User A SPOI'),
+        markerId: MarkerId('user_spoi'),
+        position: LatLng(_userSPOI!.lat, _userSPOI!.lon),
+        infoWindow: InfoWindow(title: 'User SPOI'),
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan),
       ));
     }
 
-    if (_userBSPOI != null) {
+    // Contact SPOIs
+    for (final contact in _contacts) {
       markers.add(Marker(
-        markerId: MarkerId('user_b_spoi'),
-        position: LatLng(_userBSPOI!.lat, _userBSPOI!.lon),
-        infoWindow: InfoWindow(title: 'User B SPOI'),
+        markerId: MarkerId('${contact['contact_id']}_spoi'),
+        position: LatLng(contact['generated_spoi']['lat'], contact['generated_spoi']['lon']),
+        infoWindow: InfoWindow(title: '${contact['contact_id']} SPOI'),
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan),
       ));
     }
@@ -260,25 +314,19 @@ class _DetourTestMapPageState extends State<DetourTestMapPage> {
                       Row(
                         children: [
                           Icon(Icons.location_on, color: Colors.blue),
-                          Text(' True Locations (2)'),
+                          Text(' True Locations (${_contacts.length + 1})'),
                         ],
                       ),
                       Row(
                         children: [
                           Icon(Icons.location_on, color: Colors.green),
-                          Text(' User A KNN Points (${_userAKNNs.length})'),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          Icon(Icons.location_on, color: Colors.orange),
-                          Text(' User B KNN Points (${_userBKNNs.length})'),
+                          Text(' User KNN Points (${_userKNNs.length})'),
                         ],
                       ),
                       Row(
                         children: [
                           Icon(Icons.location_on, color: Colors.cyan),
-                          Text(' Selected SPOIs (2)'),
+                          Text(' Selected SPOIs (${_contacts.length + 1})'),
                         ],
                       ),
                       Row(

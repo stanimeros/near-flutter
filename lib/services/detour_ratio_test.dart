@@ -9,9 +9,6 @@ import 'package:battery_plus/battery_plus.dart';
 import 'package:resource_monitor/resource_monitor.dart';
 import 'package:share_plus/share_plus.dart';
 
-//pick a random point close from cluster center go
-//after spoi generaetion just pick 5 random clusters
-
 class DetourRatioTest {
     // Helper function to calculate coordinates at a specific distance and bearing from a point
     static Map<String, double> calculateDestinationPoint(double lat, double lon, double distanceMeters, double bearingDegrees) {
@@ -44,6 +41,8 @@ class DetourRatioTest {
         return [
             {"lat": centerLat, "lon": centerLon},  // Point 1: City center
             calculateDestinationPoint(centerLat, centerLon, 1000, -60),
+            calculateDestinationPoint(centerLat, centerLon, 1000, 30),
+            calculateDestinationPoint(centerLat, centerLon, 1000, 0),
         ];
     }
 
@@ -63,26 +62,25 @@ class DetourRatioTest {
     };
 
   // Method to open visualization map for a specific test
-  static void openVisualizationMap(BuildContext context, Map<String, dynamic> city, int k, int userAIdx, int userBIdx) {
+  static void openVisualizationMap(BuildContext context, Map<String, dynamic> city, int k, int userIdx) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => DetourTestMapPage(
           city: city,
           k: k,
-          userAIdx: userAIdx,
-          userBIdx: userBIdx,
+          userIdx: userIdx,
         ),
       ),
     );
   }
 
   // Method to run a single test with visualization option
-  static Future<void> runSingleTestWithVisualization(BuildContext context, Map<String, dynamic> city, int k, int userAIdx, int userBIdx) async {
-    debugPrint('Running single test: ${city['name']}, k=$k, User A: ${userAIdx + 1}, User B: ${userBIdx + 1}');
+  static Future<void> runSingleTestWithVisualization(BuildContext context, Map<String, dynamic> city, int k, int userIdx) async {
+    debugPrint('Running single test: ${city['name']}, k=$k, User at point ${userIdx + 1}');
     
     try {
-      final result = await DetourRatioTest().runDetourTest(city, k, userAIdx, userBIdx, 0);
+      final result = await DetourRatioTest().runDetourTest(city, k, userIdx, 0);
       debugPrint('Test completed. Detour ratio: ${result['meeting_suggestion']['detour_ratio'].toStringAsFixed(2)}');
       
       if (context.mounted) {
@@ -98,13 +96,14 @@ class DetourRatioTest {
                 children: [
                   Text('City: ${city['name']}'),
                   Text('k: $k'),
-                  Text('User A: Point ${userAIdx + 1}'),
-                  Text('User B: Point ${userBIdx + 1}'),
+                  Text('User: Point ${userIdx + 1}'),
+                  Text('Number of contacts: ${result['returned_contacts'].length}'),
                   SizedBox(height: 8),
                   Text(
                     'Detour Ratio: ${result['meeting_suggestion']['detour_ratio'].toStringAsFixed(2)}',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red),
                   ),
+                  Text('City: ${result['meeting_suggestion']['city_name']}'),
                   Text('City ID: ${result['meeting_suggestion']['city_id']}'),
                   Text('Cluster ID: ${result['meeting_suggestion']['cluster_id']}'),
                 ],
@@ -117,7 +116,7 @@ class DetourRatioTest {
                 ElevatedButton(
                   onPressed: () {
                     Navigator.of(context).pop();
-                    openVisualizationMap(context, city, k, userAIdx, userBIdx);
+                    openVisualizationMap(context, city, k, userIdx);
                   },
                   child: Text('Visualize on Map'),
                 ),
@@ -162,27 +161,22 @@ class DetourRatioTest {
             for (final k in kValues) {
                 debugPrint('\nTesting with k=$k');
                 
-                // Test all combinations of test points (5×5=25 combinations, excluding same location = 20 combinations)
+                // Test each point as the user with all other points as contacts
                 final testPoints = city['test_points'] as List;
-                int combinationCount = 0;
-                final totalCombinations = testPoints.length * testPoints.length - testPoints.length; // 5×5 - 5 = 20
+                int testCount = 0;
                 
-                for (int userAIdx = 0; userAIdx < testPoints.length; userAIdx++) {
-                    for (int userBIdx = 0; userBIdx < testPoints.length; userBIdx++) {
-                        // Skip if both users are at the same location
-                        if (userAIdx == userBIdx) continue;
-                        
-                        combinationCount++;
-                        debugPrint('Combination $combinationCount/$totalCombinations: User A (U1) at point ${userAIdx + 1}, User B (U2) at point ${userBIdx + 1}');
-                        try {
-                            final result = await runDetourTest(city, k, userAIdx, userBIdx, combinationCount - 1);
-                            results.add(result);
-                            debugPrint('Detour ratio: ${result['meeting_suggestion']['detour_ratio'].toStringAsFixed(2)}');
-                        } catch (e) {
-                            debugPrint('Error: $e');
-                            // Still wait even if there's an error to prevent rapid retries
-                            await Future.delayed(Duration(seconds: 2));
-                        }
+                for (int userIdx = 0; userIdx < testPoints.length; userIdx++) {
+                    testCount++;
+                    debugPrint('Test $testCount/${testPoints.length}: User at point ${userIdx + 1} with all other points as contacts');
+                    try {
+                        final result = await runDetourTest(city, k, userIdx, testCount - 1);
+                        results.add(result);
+                        debugPrint('Detour ratio: ${result['meeting_suggestion']['detour_ratio'].toStringAsFixed(2)}');
+                        debugPrint('Number of contacts: ${result['returned_contacts'].length}');
+                    } catch (e) {
+                        debugPrint('Error: $e');
+                        // Still wait even if there's an error to prevent rapid retries
+                        await Future.delayed(Duration(seconds: 2));
                     }
                 }
                 
@@ -226,18 +220,15 @@ class DetourRatioTest {
         Map<String, dynamic> city,
         int k,
         int userAIdx,
-        int userBIdx,
         int meetingAttempt,
     ) async {
-        // Setup test points for User A and User B
+        // Setup test point for User A
         final userAPoint = city['test_points'][userAIdx];
-        final userBPoint = city['test_points'][userBIdx];
         
-        // Create Point objects for spatial database
+        // Create Point object for spatial database
         final userASpatialPoint = Point(userAPoint['lon'], userAPoint['lat']);
-        final userBSpatialPoint = Point(userBPoint['lon'], userBPoint['lat']);
         
-        // Generate SPOIs for both users using two-step approach
+        // Generate SPOI for user A using two-step approach
         
         // Step 1: Get 1 nearest point for User A
         final nearestPointA = await SpatialDb().getKNNs(
@@ -258,40 +249,91 @@ class DetourRatioTest {
             SpatialDb.pois,
             SpatialDb.cells,
         );
-        
-        // Step 1: Get 1 nearest point for User B
-        final nearestPointB = await SpatialDb().getKNNs(
-            1,
-            userBSpatialPoint.lon,
-            userBSpatialPoint.lat,
-            50,
-            SpatialDb.pois,
-            SpatialDb.cells,
-        );
-        
-        // Step 2: Get k nearest points from User B's nearest point location
-        final userBKNNs = await SpatialDb().getKNNs(
-            k,
-            nearestPointB.first.lon,
-            nearestPointB.first.lat,
-            50,
-            SpatialDb.pois,
-            SpatialDb.cells,
-        );
-        
-        if (userAKNNs.isEmpty || userBKNNs.isEmpty) {
-            throw Exception('No KNN points found for users');
+
+        if (userAKNNs.isEmpty) {
+            throw Exception('No KNN points found for user');
         }
-        
-        // Select random SPOIs for both users with SPOI seed
+
+        // Process all other test points as contacts
+        final contacts = <Map<String, dynamic>>[];
         final spoiSeed = DateTime.now().millisecondsSinceEpoch;
         final spoiRandom = Random(spoiSeed);
         final userASPOI = userAKNNs[spoiRandom.nextInt(userAKNNs.length)];
-        final userBSPOI = userBKNNs[spoiRandom.nextInt(userBKNNs.length)];
-        
-        // Get clusters between the two SPOIs via API
+
+        for (int contactIdx = 0; contactIdx < city['test_points'].length; contactIdx++) {
+            if (contactIdx == userAIdx) continue; // Skip self
+
+            final contactPoint = city['test_points'][contactIdx];
+            final contactSpatialPoint = Point(contactPoint['lon'], contactPoint['lat']);
+
+            // Generate SPOI for contact
+            final nearestPointContact = await SpatialDb().getKNNs(
+                1,
+                contactSpatialPoint.lon,
+                contactSpatialPoint.lat,
+                50,
+                SpatialDb.pois,
+                SpatialDb.cells,
+            );
+
+            final contactKNNs = await SpatialDb().getKNNs(
+                k,
+                nearestPointContact.first.lon,
+                nearestPointContact.first.lat,
+                50,
+                SpatialDb.pois,
+                SpatialDb.cells,
+            );
+
+            if (contactKNNs.isEmpty) continue;
+
+            final contactSPOI = contactKNNs[spoiRandom.nextInt(contactKNNs.length)];
+            
+            // Calculate distances
+            final trueDistance = Geolocator.distanceBetween(
+                userAPoint['lat'], userAPoint['lon'],
+                contactPoint['lat'], contactPoint['lon'],
+            );
+            final nearDistance = Geolocator.distanceBetween(
+                userASPOI.lat, userASPOI.lon,
+                contactSPOI.lat, contactSPOI.lon,
+            );
+
+            contacts.add({
+                'contact_id': 'U${contactIdx + 1}',
+                'true_location': {'lat': contactPoint['lat'], 'lon': contactPoint['lon']},
+                'generated_spoi': {'lat': contactSPOI.lat, 'lon': contactSPOI.lon},
+                'true_distance_m': trueDistance,
+                'near_distance_m': nearDistance,
+            });
+        }
+
+        if (contacts.isEmpty) {
+            throw Exception('No valid contacts found');
+        }
+
+        // Sort contacts by true distance and assign true_rank
+        contacts.sort((a, b) => (a['true_distance_m'] as double).compareTo(b['true_distance_m'] as double));
+        for (int i = 0; i < contacts.length; i++) {
+            contacts[i]['true_rank'] = i + 1;
+        }
+
+        // Sort contacts by near distance and assign near_rank
+        contacts.sort((a, b) => (a['near_distance_m'] as double).compareTo(b['near_distance_m'] as double));
+        for (int i = 0; i < contacts.length; i++) {
+            contacts[i]['near_rank'] = i + 1;
+        }
+
+        // Get clusters between the user's SPOI and the first contact's SPOI
+        final firstContact = contacts.first;
         final clustersStartTime = DateTime.now();
-        final clusters = await SpatialDb().getClustersBetweenTwoPoints(userASPOI, userBSPOI);
+        final clusters = await SpatialDb().getClustersBetweenTwoPoints(
+            userASPOI,
+            Point(
+                firstContact['generated_spoi']['lon'],
+                firstContact['generated_spoi']['lat'],
+            ),
+        );
         final clustersEndTime = DateTime.now();
         
         if (clusters.isEmpty) {
@@ -306,21 +348,11 @@ class DetourRatioTest {
         // Get the meeting point (first point in the cluster)
         final meetingPoint = selectedCluster.corePoint;
         
-        // Calculate detour ratio: (d(A,Σ)+d(B,Σ)) / d(A,B)
+        // Calculate detour ratio with first contact
         final detourRatio = calculateDetourRatio(
             userAPoint['lat'], userAPoint['lon'],
-            userBPoint['lat'], userBPoint['lon'],
+            firstContact['true_location']['lat'], firstContact['true_location']['lon'],
             meetingPoint.lat, meetingPoint.lon,
-        );
-        
-        // Calculate distances
-        final trueDistanceAB = Geolocator.distanceBetween(
-            userAPoint['lat'], userAPoint['lon'],
-            userBPoint['lat'], userBPoint['lon'],
-        );
-        final nearDistanceAB = Geolocator.distanceBetween(
-            userASPOI.lat, userASPOI.lon,
-            userBSPOI.lat, userBSPOI.lon,
         );
 
         final data = await ResourceMonitor.getResourceUsage;
@@ -328,8 +360,8 @@ class DetourRatioTest {
         
         return {
             'timestamp': DateTime.now().toUtc().toIso8601String(),
-            'user_id': 'U1',
-            'contact_ids': ['U2'],
+            'user_id': 'U${userAIdx + 1}',
+            'contact_ids': contacts.map((c) => c['contact_id']).toList(),
             'true_location': {'lat': userAPoint['lat'], 'lon': userAPoint['lon']},
             'generated_spoi': {'lat': userASPOI.lat, 'lon': userASPOI.lon},
             'candidate_spois': userAKNNs.map((p) => {'lat': p.lat, 'lon': p.lon}).toList(),
@@ -342,14 +374,10 @@ class DetourRatioTest {
                 'battery_level_pct': batteryLevel,
                 'memory_usage_bytes': data.memoryInUseByApp.toInt(),
             },
-            'returned_contacts': [{
-                'contact_id': 'U2',
-                'true_distance_m': trueDistanceAB,
-                'near_distance_m': nearDistanceAB,
-                'reported_rank': 1,
-            }],
+            'returned_contacts': contacts,
             'meeting_suggestion': {
                 'city_id': selectedCluster.cityId,
+                'city_name': city['name'],
                 'cluster_id': selectedCluster.id,
                 'meeting_point': {'lat': meetingPoint.lat, 'lon': meetingPoint.lon},
                 'accepted': true,
