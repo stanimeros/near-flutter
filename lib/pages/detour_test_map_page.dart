@@ -10,13 +10,11 @@ import 'dart:math';
 class DetourTestMapPage extends StatefulWidget {
   final Map<String, dynamic> city;
   final int k;
-  final int userIdx;
 
   const DetourTestMapPage({
     super.key,
     required this.city,
     required this.k,
-    required this.userIdx,
   });
 
   @override
@@ -43,7 +41,7 @@ class _DetourTestMapPageState extends State<DetourTestMapPage> {
   Future<void> _runDetourTest() async {
     try {
       // Get test points
-      final userPoint = widget.city['test_points'][widget.userIdx];
+      final userPoint = widget.city['test_points'][0];
       
       // Create Point object
       final userSpatialPoint = Point(userPoint['lon'], userPoint['lat']);
@@ -63,7 +61,7 @@ class _DetourTestMapPageState extends State<DetourTestMapPage> {
       final userSPOI = userKNNs[spoiRandom.nextInt(userKNNs.length)];
 
       for (int contactIdx = 0; contactIdx < widget.city['test_points'].length; contactIdx++) {
-        if (contactIdx == widget.userIdx) continue; // Skip self
+        if (contactIdx == 0) continue; // Skip self
 
         final contactPoint = widget.city['test_points'][contactIdx];
         final contactSpatialPoint = Point(contactPoint['lon'], contactPoint['lat']);
@@ -144,7 +142,7 @@ class _DetourTestMapPageState extends State<DetourTestMapPage> {
           contact['true_location']['lat'], contact['true_location']['lon'],
           selectedCluster.corePoint.lat, selectedCluster.corePoint.lon,
         );
-        final pairKey = '${widget.userIdx + 1}-${contact['contact_id'].substring(1)}'; // e.g., "1-2" for U1-U2
+        final pairKey = 'U${contact['contact_id'].substring(1)}'; // e.g., "U2" for U1-U2
         detourRatios[pairKey] = detourRatio;
         totalDetourRatio += detourRatio;
       }

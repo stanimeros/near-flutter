@@ -205,7 +205,6 @@ class _DetourTestPageState extends State<DetourTestPage> {
         context,
         city,
         _selectedK,
-        _selectedUser,
         _selectedCloakingMode,
       );
     } catch (e) {

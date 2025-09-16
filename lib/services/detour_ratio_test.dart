@@ -81,25 +81,24 @@ class DetourRatioTest {
     };
 
   // Method to open visualization map for a specific test
-  static void openVisualizationMap(BuildContext context, Map<String, dynamic> city, int k, int userIdx) {
+  static void openVisualizationMap(BuildContext context, Map<String, dynamic> city, int k) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => DetourTestMapPage(
           city: city,
           k: k,
-          userIdx: userIdx,
         ),
       ),
     );
   }
 
   // Method to run a single test with visualization option
-  static Future<void> runSingleTestWithVisualization(BuildContext context, Map<String, dynamic> city, int k, int userIdx, [String cloakingMode = "baseline_radius"]) async {
-    debugPrint('Running single test: ${city['name']}, k=$k, User at point ${userIdx + 1}');
+  static Future<void> runSingleTestWithVisualization(BuildContext context, Map<String, dynamic> city, int k, [String cloakingMode = "baseline_radius"]) async {
+    debugPrint('Running single test: ${city['name']}, k=$k, User at point 1');
     
     try {
-      final result = await DetourRatioTest().runDetourTest(city, k, userIdx, 0, cloakingMode);
+      final result = await DetourRatioTest().runDetourTest(city, k, 0, cloakingMode);
       debugPrint('Test completed. Average detour ratio: ${result['meeting_suggestion']['avg_detour_ratio'].toStringAsFixed(2)}');
       
       final detourRatios = result['meeting_suggestion']['detour_ratios'] as Map<String, dynamic>;
@@ -120,7 +119,6 @@ class DetourRatioTest {
                 children: [
                   Text('City: ${city['name']}'),
                   Text('k: $k'),
-                  Text('User: Point ${userIdx + 1}'),
                   Text('Number of contacts: ${result['returned_contacts'].length}'),
                   SizedBox(height: 8),
                   Text(
@@ -145,7 +143,7 @@ class DetourRatioTest {
                 ElevatedButton(
                   onPressed: () {
                     Navigator.of(context).pop();
-                    openVisualizationMap(context, city, k, userIdx);
+                    openVisualizationMap(context, city, k);
                   },
                   child: Text('Visualize on Map'),
                 ),
@@ -323,20 +321,10 @@ class DetourRatioTest {
                                     {...city, 'test_points': testPoints},
                                     k,
                                     0, // Always use index 0 as it's U1's position
-                                    run,
                                     mode
                                 );
                                 
-                                // Add trace and run information to the result
-                                final enrichedResult = {
-                                    ...result,
-                                    'k_value': k,
-                                    'city': city['name'],
-                                    'cloaking_method': mode,
-                                    'run_number': run + 1,
-                                };
-                                
-                                results.add(enrichedResult);
+                                results.add(result);
                                 
                                 final methodName = result['cloaking_method'];
                                 debugPrint('Cloaking method: $methodName');
@@ -445,12 +433,11 @@ class DetourRatioTest {
     Future<Map<String, dynamic>> runDetourTest(
         Map<String, dynamic> city,
         int k,
-        int userIdx,
         int meetingAttempt,
         [String cloakingMode = "baseline_radius"]
     ) async {
         // Setup test point for User A
-        final userPoint = city['test_points'][userIdx];
+        final userPoint = city['test_points'][0];
         
         // Create Point object for spatial database
         final userSpatialPoint = Point(userPoint['lon'], userPoint['lat']);
@@ -484,7 +471,7 @@ class DetourRatioTest {
         final contacts = <Map<String, dynamic>>[];
 
         for (int contactIdx = 0; contactIdx < city['test_points'].length; contactIdx++) {
-            if (contactIdx == userIdx) continue; // Skip self
+            if (contactIdx == 0) continue; // Skip self
 
             final contactPoint = city['test_points'][contactIdx];
             final contactSpatialPoint = Point(contactPoint['lon'], contactPoint['lat']);
@@ -583,32 +570,46 @@ class DetourRatioTest {
         final batteryLevel = (await Battery().batteryLevel).toDouble();
         
         return {
+            // Test configuration
+            'k_value': k,
+            'city': city['name'],
+            'city_id': selectedCluster.cityId,
+            'cloaking_method': cloakingMode,
+            'run_number': meetingAttempt + 1,
+
+            // Timestamps and seeds
             'timestamp': DateTime.now().toUtc().toIso8601String(),
-            'user_id': 'U${userIdx + 1}',
-            'contact_ids': contacts.map((c) => c['contact_id']).toList(),
+            'spoi_seed': spoiSeed,
+            'meeting_seed': meetingSeed,
+
+            // User and location data
+            'user_id': 'U1',
             'true_location': {'lat': userPoint['lat'], 'lon': userPoint['lon']},
             'generated_spoi': {
                 'lat': userSPOI.lat,
                 'lon': userSPOI.lon,
                 'candidate_spois': candidateSpois,
             },
-            'spoi_seed_info': spoiSeed.toString(),
-            'meeting_seed_info': meetingSeed.toString(),
-            'system_information': {
+
+            // Contact information
+            'contact_ids': contacts.map((c) => c['contact_id']).toList(),
+            'contacts': contacts,
+
+            // Meeting and detour information
+            'meeting_point': {
+                'lat': meetingPoint.lat,
+                'lon': meetingPoint.lon,
+                'cluster_id': selectedCluster.id,
+            },
+            'detour_ratios': detourRatios,
+            'avg_detour_ratio': avgDetourRatio,
+
+            // System metrics
+            'metrics': {
                 'network_latency_ms': clustersEndTime.difference(clustersStartTime).inMilliseconds.toDouble(),
                 'cpu_usage_pct': data.cpuInUseByApp,
                 'battery_level_pct': batteryLevel,
                 'memory_usage_bytes': data.memoryInUseByApp.toInt(),
-            },
-            'returned_contacts': contacts,
-            'meeting_suggestion': {
-                'city_id': selectedCluster.cityId,
-                'city_name': city['name'],
-                'cluster_id': selectedCluster.id,
-                'meeting_point': {'lat': meetingPoint.lat, 'lon': meetingPoint.lon},
-                'accepted': true,
-                'detour_ratios': detourRatios,
-                'avg_detour_ratio': avgDetourRatio,
             },
         };
     }
