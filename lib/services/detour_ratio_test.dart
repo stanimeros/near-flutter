@@ -39,10 +39,11 @@ class DetourRatioTest {
     // Generate test points programmatically for consistent distances
     static List<Map<String, double>> generateTestPoints(double centerLat, double centerLon) {
         return [
-            {"lat": centerLat, "lon": centerLon},
+            // Generate points at different distances and angles around the center (no center point)
             calculateDestinationPoint(centerLat, centerLon, 1000, -60),
             calculateDestinationPoint(centerLat, centerLon, 700, 30),
             calculateDestinationPoint(centerLat, centerLon, 300, 0),
+            calculateDestinationPoint(centerLat, centerLon, 500, 120),
         ];
     }
 
@@ -321,7 +322,7 @@ class DetourRatioTest {
                                 debugPrint('Average detour ratio: ${result['avg_detour_ratio'].toStringAsFixed(2)}');
                                 
                                 if (methodName == '2hp') {
-                                    final candidateCount = result['generated_spoi']['candidate_spois']?.length ?? 0;
+                                    final candidateCount = result['candidate_spois']?.length ?? 0;
                                     debugPrint('Number of candidate SPOIs: $candidateCount');
                                 }
                             } catch (e) {
