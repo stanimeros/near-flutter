@@ -327,15 +327,16 @@ class DetourRatioTest {
                                     mode
                                 );
                                 
-                                // Add trace information to the result
-                                result['trace_info'] = {
-                                    'point_index': traceIdx,
-                                    'total_points': trace.length,
-                                    'run': run + 1,
-                                    'trace': trace,
+                                // Add trace and run information to the result
+                                final enrichedResult = {
+                                    ...result,
+                                    'k_value': k,
+                                    'city': city['name'],
+                                    'cloaking_method': mode,
+                                    'run_number': run + 1,
                                 };
                                 
-                                results.add(result);
+                                results.add(enrichedResult);
                                 
                                 final methodName = result['cloaking_method'];
                                 debugPrint('Cloaking method: $methodName');
@@ -475,6 +476,9 @@ class DetourRatioTest {
 
         // Create Point object for cloaked location
         final userSPOI = Point(userCloakedLocation["lon"]!, userCloakedLocation["lat"]!);
+        
+        // Store candidate SPOIs if available (for 2HP)
+        final candidateSpois = userCloakedLocation["candidate_spois"];
 
         // Process all other test points as contacts
         final contacts = <Map<String, dynamic>>[];
@@ -586,11 +590,8 @@ class DetourRatioTest {
             'generated_spoi': {
                 'lat': userSPOI.lat,
                 'lon': userSPOI.lon,
+                'candidate_spois': candidateSpois,
             },
-            'k_value': k,
-            'radius_meters': 500,
-            'cell_size_meters': 500,
-            'cloaking_method': cloakingMode,
             'spoi_seed_info': spoiSeed.toString(),
             'meeting_seed_info': meetingSeed.toString(),
             'system_information': {
