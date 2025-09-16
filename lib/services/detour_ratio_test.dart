@@ -337,15 +337,12 @@ class DetourRatioTest {
                                 }
                             } catch (e) {
                                 debugPrint('Error: $e');
-                                await Future.delayed(Duration(seconds: 2));
                             }
                         }
                     }
                 }
             }
         }
-
-        await shareResults(results);
         
         // Print detailed test results
         debugPrint('\n=== Test Results ===');
@@ -410,6 +407,8 @@ class DetourRatioTest {
                 }
             }
         }
+
+        await shareResults(results);
     }
 
     Future<Map<String, dynamic>> runDetourTest(
