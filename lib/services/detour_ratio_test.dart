@@ -46,6 +46,25 @@ class DetourRatioTest {
         ];
     }
 
+    // Generate a trace of 3 points with 200-300m distance between them
+    static List<Map<String, double>> generateTrace(double startLat, double startLon) {
+        final random = Random();
+        final trace = <Map<String, double>>[
+            {"lat": startLat, "lon": startLon}  // Starting point
+        ];
+
+        // Generate 2 more points with random distances (200-300m) and angles
+        for (int i = 0; i < 2; i++) {
+            final prevPoint = trace.last;
+            final distance = 200.0 + random.nextDouble() * 100; // Random distance between 200-300m
+            final angle = random.nextDouble() * 360; // Random angle
+            final nextPoint = calculateDestinationPoint(prevPoint['lat']!, prevPoint['lon']!, distance, angle);
+            trace.add(nextPoint);
+        }
+
+        return trace;
+    }
+
     // Detour Ratio Test Data
     static Map<String, dynamic> get thessaloniki => {
         "name": "ΘΕΣΣΑΛΟΝΙΚΗΣ",
@@ -218,6 +237,7 @@ class DetourRatioTest {
                     "lon": cloaked["lon"]!,
                     "cloaking_method": "fixed_radius",
                     "radius_meters": radiusMeters,
+                    "candidate_spois": null,
                 };
             case "baseline_grid":
                 final cloaked = gridCloak(lat, lon, cellSizeMeters: cellSizeMeters);
@@ -226,14 +246,23 @@ class DetourRatioTest {
                     "lon": cloaked["lon"]!,
                     "cloaking_method": "grid",
                     "cell_size_meters": cellSizeMeters,
+                    "candidate_spois": null,
                 };
             default:
-                final cloaked = await twoHopPrivacy(lat, lon, k, db, random: rand);
+                // For 2HP, get all candidate points and the selected one
+                final nearestPoint = await db.getKNNs(1, lon, lat, 50, SpatialDb.pois, SpatialDb.cells);
+                final knnPoints = await db.getKNNs(k, nearestPoint.first.lon, nearestPoint.first.lat, 50, SpatialDb.pois, SpatialDb.cells);
+                
+                final selectedPoint = knnPoints[rand.nextInt(knnPoints.length)];
                 return {
-                    "lat": cloaked.lat,
-                    "lon": cloaked.lon,
+                    "lat": selectedPoint.lat,
+                    "lon": selectedPoint.lon,
                     "cloaking_method": "2hp",
                     "k_value": k,
+                    "candidate_spois": knnPoints.map((p) => {
+                        "lat": p.lat,
+                        "lon": p.lon,
+                    }).toList(),
                 };
         }
     }
@@ -254,7 +283,7 @@ class DetourRatioTest {
     Future<void> runDetourRatioTest() async {
         debugPrint('Starting detour ratio tests...');
         
-        final kValues = [5, 25, 100];
+        final kValues = [5, 10, 25, 100];
         final cities = [thessaloniki, komotini];
         final cloakingModes = ["baseline_radius", "baseline_grid", "2hp"];
         final results = <Map<String, dynamic>>[];
@@ -262,31 +291,65 @@ class DetourRatioTest {
         for (final city in cities) {
             debugPrint('\nTesting city: ${city['name']}');
             
+            // Generate a trace for U1 with 3 points
+            final trace = generateTrace(city['center']['lat'], city['center']['lon']);
+            debugPrint('\nGenerated trace with ${trace.length} points:');
+            for (int i = 0; i < trace.length; i++) {
+                debugPrint('  Point ${i + 1}: (${trace[i]['lat']}, ${trace[i]['lon']})');
+            }
+            
             for (final k in kValues) {
                 debugPrint('\nTesting with k=$k');
                 
                 for (final mode in cloakingModes) {
                     debugPrint('\nTesting with cloaking method: $mode');
                     
-                    // Test each point as the user with all other points as contacts
-                    final testPoints = city['test_points'] as List;
-                    int testCount = 0;
-                    
-                    for (int userIdx = 0; userIdx < testPoints.length; userIdx++) {
-                        testCount++;
-                        debugPrint('Test $testCount/${testPoints.length}: User at point ${userIdx + 1} with all other points as contacts');
-                        try {
-                            // Override the cloaking mode for this test
-                            final result = await runDetourTest(city, k, userIdx, testCount - 1, mode);
-                            results.add(result);
-                            final methodName = result['generated_spoi']['cloaking_method'];
-                            debugPrint('Cloaking method: $methodName');
-                            debugPrint('Average detour ratio: ${result['meeting_suggestion']['avg_detour_ratio'].toStringAsFixed(2)}');
-                            debugPrint('Number of contacts: ${result['returned_contacts'].length}');
-                        } catch (e) {
-                            debugPrint('Error: $e');
-                            // Still wait even if there's an error to prevent rapid retries
-                            await Future.delayed(Duration(seconds: 2));
+                    // For each point in the trace
+                    for (int traceIdx = 0; traceIdx < trace.length; traceIdx++) {
+                        final tracePoint = trace[traceIdx];
+                        debugPrint('\nTesting trace point ${traceIdx + 1}');
+                        
+                        // Run 5 times for each point
+                        for (int run = 0; run < 5; run++) {
+                            debugPrint('Run ${run + 1}/5');
+                            try {
+                                // Create a custom test point list with the current trace point as U1
+                                final testPoints = [
+                                    tracePoint,  // U1's position
+                                    ...city['test_points'], // Other points as contacts
+                                ];
+                                
+                                final result = await runDetourTest(
+                                    {...city, 'test_points': testPoints},
+                                    k,
+                                    0, // Always use index 0 as it's U1's position
+                                    run,
+                                    mode
+                                );
+                                
+                                // Add trace information to the result
+                                result['trace_info'] = {
+                                    'point_index': traceIdx,
+                                    'total_points': trace.length,
+                                    'run': run + 1,
+                                    'trace': trace,
+                                };
+                                
+                                results.add(result);
+                                
+                                final methodName = result['cloaking_method'];
+                                debugPrint('Cloaking method: $methodName');
+                                debugPrint('Average detour ratio: ${result['meeting_suggestion']['avg_detour_ratio'].toStringAsFixed(2)}');
+                                debugPrint('Number of contacts: ${result['returned_contacts'].length}');
+                                
+                                if (methodName == '2hp') {
+                                    final candidateCount = result['generated_spoi']['candidate_spois']?.length ?? 0;
+                                    debugPrint('Number of candidate SPOIs: $candidateCount');
+                                }
+                            } catch (e) {
+                                debugPrint('Error: $e');
+                                await Future.delayed(Duration(seconds: 2));
+                            }
                         }
                     }
                     
@@ -324,27 +387,53 @@ class DetourRatioTest {
                     final cityResults = results.where((r) => 
                         r['meeting_suggestion']['city_id'] == city['city_id'] && 
                         r['k_value'] == k &&
-                        r['generated_spoi']['cloaking_method'] == mode
+                        r['cloaking_method'] == mode
                     ).toList();
                     
                     if (cityResults.isNotEmpty) {
-                        // Calculate average detour ratio across all tests for this configuration
-                        final avgDetourRatio = cityResults
-                            .map((r) => r['meeting_suggestion']['avg_detour_ratio'] as double)
-                            .reduce((a, b) => a + b) / cityResults.length;
-                            
-                        debugPrint('  Average detour ratio across all tests: ${avgDetourRatio.toStringAsFixed(2)}');
-                        
+                        // Group results by trace point
+                        final traceResults = <int, List<Map<String, dynamic>>>{};
                         for (final result in cityResults) {
-                            final detourRatios = result['meeting_suggestion']['detour_ratios'] as Map<String, dynamic>;
-                            debugPrint('\n    User ${result['user_id']}:');
-                            debugPrint('      Average detour ratio = ${result['meeting_suggestion']['avg_detour_ratio'].toStringAsFixed(2)}');
-                            for (final entry in detourRatios.entries) {
-                                debugPrint(
-                                    '      Contact ${entry.key}: '
-                                    'Detour ratio = ${entry.value.toStringAsFixed(2)}'
-                                );
+                            final pointIndex = result['trace_info']['point_index'] as int;
+                            traceResults.putIfAbsent(pointIndex, () => []).add(result);
+                        }
+
+                        // Print results for each trace point
+                        for (final pointIndex in traceResults.keys.toList()..sort()) {
+                            final pointResults = traceResults[pointIndex]!;
+                            final traceInfo = pointResults.first['trace_info'];
+                            
+                            debugPrint('\n    Trace Point ${pointIndex + 1}/${traceInfo['total_points']}:');
+                            debugPrint('      True Location: (${traceInfo['trace'][pointIndex]['lat']}, ${traceInfo['trace'][pointIndex]['lon']})');
+                            
+                            // Print results for each run
+                            for (final result in pointResults) {
+                                debugPrint('\n      Run ${result['trace_info']['run']}/5:');
+                                debugPrint('        Generated SPOI: (${result['generated_spoi']['lat']}, ${result['generated_spoi']['lon']})');
+                                debugPrint('        Average Detour Ratio: ${result['meeting_suggestion']['avg_detour_ratio'].toStringAsFixed(2)}');
+                                
+                                // Print candidate SPOIs for 2HP
+                                final candidateSpois = result['generated_spoi']['candidate_spois'];
+                                if (candidateSpois != null) {
+                                    debugPrint('        Candidate SPOIs (${candidateSpois.length}):');
+                                    for (final spoi in candidateSpois) {
+                                        debugPrint('          (${spoi['lat']}, ${spoi['lon']})');
+                                    }
+                                }
+                                
+                                // Print detour ratios for each contact
+                                final detourRatios = result['meeting_suggestion']['detour_ratios'] as Map<String, dynamic>;
+                                debugPrint('        Contact Detour Ratios:');
+                                for (final entry in detourRatios.entries) {
+                                    debugPrint('          ${entry.key}: ${entry.value.toStringAsFixed(2)}');
+                                }
                             }
+                            
+                            // Calculate and print average detour ratio for this trace point
+                            final avgDetourRatio = pointResults
+                                .map((r) => r['meeting_suggestion']['avg_detour_ratio'] as double)
+                                .reduce((a, b) => a + b) / pointResults.length;
+                            debugPrint('\n      Average detour ratio across all runs: ${avgDetourRatio.toStringAsFixed(2)}');
                         }
                     }
                 }
