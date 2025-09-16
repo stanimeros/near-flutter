@@ -39,30 +39,21 @@ class DetourRatioTest {
     // Generate test points programmatically for consistent distances
     static List<Map<String, double>> generateTestPoints(double centerLat, double centerLon) {
         return [
-            {"lat": centerLat, "lon": centerLon},  // Point 1: City center
+            {"lat": centerLat, "lon": centerLon},
             calculateDestinationPoint(centerLat, centerLon, 1000, -60),
             calculateDestinationPoint(centerLat, centerLon, 700, 30),
             calculateDestinationPoint(centerLat, centerLon, 300, 0),
         ];
     }
 
-    // Generate a trace of 3 points with 200-300m distance between them
-    static List<Map<String, double>> generateTrace(double startLat, double startLon) {
-        final random = Random();
-        final trace = <Map<String, double>>[
-            {"lat": startLat, "lon": startLon}  // Starting point
+    // Generate test points programmatically for consistent distances
+    static List<Map<String, double>> generateTrace(double centerLat, double centerLon) {
+        return [
+            {"lat": centerLat, "lon": centerLon},
+            calculateDestinationPoint(centerLat, centerLon, 200, -10),
+            calculateDestinationPoint(centerLat, centerLon, 250, 20),
+            calculateDestinationPoint(centerLat, centerLon, 300, 40),
         ];
-
-        // Generate 2 more points with random distances (200-300m) and angles
-        for (int i = 0; i < 2; i++) {
-            final prevPoint = trace.last;
-            final distance = 200.0 + random.nextDouble() * 100; // Random distance between 200-300m
-            final angle = random.nextDouble() * 360; // Random angle
-            final nextPoint = calculateDestinationPoint(prevPoint['lat']!, prevPoint['lon']!, distance, angle);
-            trace.add(nextPoint);
-        }
-
-        return trace;
     }
 
     // Detour Ratio Test Data
@@ -119,7 +110,6 @@ class DetourRatioTest {
                 children: [
                   Text('City: ${city['name']}'),
                   Text('k: $k'),
-                  Text('Number of contacts: ${result['contacts'].length}'),
                   SizedBox(height: 8),
                   Text(
                     'Average Detour Ratio: ${result['avg_detour_ratio'].toStringAsFixed(2)}',
@@ -274,7 +264,7 @@ class DetourRatioTest {
         final dContactMeeting = Geolocator.distanceBetween(contactLat, contactLon, meetingLat, meetingLon);
         final dUserContact = Geolocator.distanceBetween(userLat, userLon, contactLat, contactLon);
         
-        if (dUserContact == 0) return 1.0;
+        if (dUserContact == 0) return 1.0;  // Same point
         return (dUserMeeting + dContactMeeting) / dUserContact;
     }
 
@@ -329,7 +319,6 @@ class DetourRatioTest {
                                 final methodName = result['cloaking_method'];
                                 debugPrint('Cloaking method: $methodName');
                                 debugPrint('Average detour ratio: ${result['avg_detour_ratio'].toStringAsFixed(2)}');
-                                debugPrint('Number of contacts: ${result['contacts'].length}');
                                 
                                 if (methodName == '2hp') {
                                     final candidateCount = result['generated_spoi']['candidate_spois']?.length ?? 0;
@@ -338,70 +327,6 @@ class DetourRatioTest {
                             } catch (e) {
                                 debugPrint('Error: $e');
                             }
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Print detailed test results
-        debugPrint('\n=== Test Results ===');
-        for (final city in cities) {
-            debugPrint('\n${city['name']}:');
-            for (final mode in cloakingModes) {
-                debugPrint('\nCloaking Method: $mode');
-                for (final k in kValues) {
-                    debugPrint('\n  k=$k:');
-                    final cityResults = results.where((r) => 
-                        r['meeting_suggestion']['city_id'] == city['city_id'] && 
-                        r['k_value'] == k &&
-                        r['cloaking_method'] == mode
-                    ).toList();
-                    
-                    if (cityResults.isNotEmpty) {
-                        // Group results by trace point
-                        final traceResults = <int, List<Map<String, dynamic>>>{};
-                        for (final result in cityResults) {
-                            final pointIndex = result['trace_info']['point_index'] as int;
-                            traceResults.putIfAbsent(pointIndex, () => []).add(result);
-                        }
-
-                        // Print results for each trace point
-                        for (final pointIndex in traceResults.keys.toList()..sort()) {
-                            final pointResults = traceResults[pointIndex]!;
-                            final traceInfo = pointResults.first['trace_info'];
-                            
-                            debugPrint('\n    Trace Point ${pointIndex + 1}/${traceInfo['total_points']}:');
-                            debugPrint('      True Location: (${traceInfo['trace'][pointIndex]['lat']}, ${traceInfo['trace'][pointIndex]['lon']})');
-                            
-                            // Print results for each run
-                            for (final result in pointResults) {
-                                debugPrint('\n      Run ${result['run_number']}/5:');
-                                debugPrint('        Generated SPOI: (${result['generated_spoi']['lat']}, ${result['generated_spoi']['lon']})');
-                                debugPrint('        Average Detour Ratio: ${result['avg_detour_ratio'].toStringAsFixed(2)}');
-                                
-                                // Print candidate SPOIs for 2HP
-                                final candidateSpois = result['generated_spoi']['candidate_spois'];
-                                if (candidateSpois != null) {
-                                    debugPrint('        Candidate SPOIs (${candidateSpois.length}):');
-                                    for (final spoi in candidateSpois) {
-                                        debugPrint('          (${spoi['lat']}, ${spoi['lon']})');
-                                    }
-                                }
-                                
-                                // Print detour ratios for each contact
-                                final detourRatios = result['meeting_suggestion']['detour_ratios'] as Map<String, dynamic>;
-                                debugPrint('        Contact Detour Ratios:');
-                                for (final entry in detourRatios.entries) {
-                                    debugPrint('          ${entry.key}: ${entry.value.toStringAsFixed(2)}');
-                                }
-                            }
-                            
-                            // Calculate and print average detour ratio for this trace point
-                            final avgDetourRatio = pointResults
-                                .map((r) => r['avg_detour_ratio'] as double)
-                                .reduce((a, b) => a + b) / pointResults.length;
-                            debugPrint('\n      Average detour ratio across all runs: ${avgDetourRatio.toStringAsFixed(2)}');
                         }
                     }
                 }
@@ -451,9 +376,9 @@ class DetourRatioTest {
         // Process all other test points as contacts
         final contacts = <Map<String, dynamic>>[];
 
-        for (int contactIdx = 0; contactIdx < city['test_points'].length; contactIdx++) {
-            if (contactIdx == 0) continue; // Skip self
-
+          for (int contactIdx = 0; contactIdx < city['test_points'].length; contactIdx++) {
+            if (contactIdx == 0) continue; // Skip self - avoid division by zero in detour ratio
+            
             final contactPoint = city['test_points'][contactIdx];
             final contactSpatialPoint = Point(contactPoint['lon'], contactPoint['lat']);
 
