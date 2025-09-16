@@ -99,11 +99,11 @@ class DetourRatioTest {
     
     try {
       final result = await DetourRatioTest().runDetourTest(city, k, 0, cloakingMode);
-      debugPrint('Test completed. Average detour ratio: ${result['meeting_suggestion']['avg_detour_ratio'].toStringAsFixed(2)}');
+        debugPrint('Test completed. Average detour ratio: ${result['avg_detour_ratio'].toStringAsFixed(2)}');
       
-      final detourRatios = result['meeting_suggestion']['detour_ratios'] as Map<String, dynamic>;
+      final detourRatios = result['detour_ratios'] as Map<String, dynamic>;
       for (final entry in detourRatios.entries) {
-        debugPrint('  Pair U${entry.key}: ${entry.value.toStringAsFixed(2)}');
+        debugPrint('  Contact ${entry.key}: ${entry.value.toStringAsFixed(2)}');
       }
       
       if (context.mounted) {
@@ -119,20 +119,20 @@ class DetourRatioTest {
                 children: [
                   Text('City: ${city['name']}'),
                   Text('k: $k'),
-                  Text('Number of contacts: ${result['returned_contacts'].length}'),
+                  Text('Number of contacts: ${result['contacts'].length}'),
                   SizedBox(height: 8),
                   Text(
-                    'Average Detour Ratio: ${result['meeting_suggestion']['avg_detour_ratio'].toStringAsFixed(2)}',
+                    'Average Detour Ratio: ${result['avg_detour_ratio'].toStringAsFixed(2)}',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red),
                   ),
                   SizedBox(height: 8),
                   Text('Detour Ratios by Pair:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ...(result['meeting_suggestion']['detour_ratios'] as Map<String, dynamic>).entries.map((entry) => 
-                    Text('  U${entry.key}: ${entry.value.toStringAsFixed(2)}')
+                  ...(result['detour_ratios'] as Map<String, dynamic>).entries.map((entry) => 
+                    Text('  ${entry.key}: ${entry.value.toStringAsFixed(2)}')
                   ),
-                  Text('City: ${result['meeting_suggestion']['city_name']}'),
-                  Text('City ID: ${result['meeting_suggestion']['city_id']}'),
-                  Text('Cluster ID: ${result['meeting_suggestion']['cluster_id']}'),
+                  Text('City: ${result['city']}'),
+                  Text('City ID: ${result['city_id']}'),
+                  Text('Cluster ID: ${result['meeting_point']['cluster_id']}'),
                 ],
               ),
               actions: [
@@ -328,8 +328,8 @@ class DetourRatioTest {
                                 
                                 final methodName = result['cloaking_method'];
                                 debugPrint('Cloaking method: $methodName');
-                                debugPrint('Average detour ratio: ${result['meeting_suggestion']['avg_detour_ratio'].toStringAsFixed(2)}');
-                                debugPrint('Number of contacts: ${result['returned_contacts'].length}');
+                                debugPrint('Average detour ratio: ${result['avg_detour_ratio'].toStringAsFixed(2)}');
+                                debugPrint('Number of contacts: ${result['contacts'].length}');
                                 
                                 if (methodName == '2hp') {
                                     final candidateCount = result['generated_spoi']['candidate_spois']?.length ?? 0;
@@ -397,9 +397,9 @@ class DetourRatioTest {
                             
                             // Print results for each run
                             for (final result in pointResults) {
-                                debugPrint('\n      Run ${result['trace_info']['run']}/5:');
+                                debugPrint('\n      Run ${result['run_number']}/5:');
                                 debugPrint('        Generated SPOI: (${result['generated_spoi']['lat']}, ${result['generated_spoi']['lon']})');
-                                debugPrint('        Average Detour Ratio: ${result['meeting_suggestion']['avg_detour_ratio'].toStringAsFixed(2)}');
+                                debugPrint('        Average Detour Ratio: ${result['avg_detour_ratio'].toStringAsFixed(2)}');
                                 
                                 // Print candidate SPOIs for 2HP
                                 final candidateSpois = result['generated_spoi']['candidate_spois'];
@@ -420,7 +420,7 @@ class DetourRatioTest {
                             
                             // Calculate and print average detour ratio for this trace point
                             final avgDetourRatio = pointResults
-                                .map((r) => r['meeting_suggestion']['avg_detour_ratio'] as double)
+                                .map((r) => r['avg_detour_ratio'] as double)
                                 .reduce((a, b) => a + b) / pointResults.length;
                             debugPrint('\n      Average detour ratio across all runs: ${avgDetourRatio.toStringAsFixed(2)}');
                         }
@@ -585,10 +585,10 @@ class DetourRatioTest {
             // User and location data
             'user_id': 'U1',
             'true_location': {'lat': userPoint['lat'], 'lon': userPoint['lon']},
+            'candidate_spois': candidateSpois,
             'generated_spoi': {
                 'lat': userSPOI.lat,
                 'lon': userSPOI.lon,
-                'candidate_spois': candidateSpois,
             },
 
             // Contact information
