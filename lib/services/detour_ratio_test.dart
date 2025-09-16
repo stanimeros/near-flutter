@@ -341,25 +341,7 @@ class DetourRatioTest {
                             }
                         }
                     }
-                    
-                    // Add extra delay between different cloaking modes
-                    if (mode != cloakingModes.last) {
-                        debugPrint('Completed $mode tests');
-                        await Future.delayed(Duration(seconds: 1));
-                    }
                 }
-                
-                // Add extra delay between different k-values
-                if (k != kValues.last) {
-                    debugPrint('Completed k=$k tests');
-                    await Future.delayed(Duration(seconds: 1));
-                }
-            }
-            
-            // Add delay between cities
-            if (city != cities.last) {
-                debugPrint('Completed ${city['name']} tests');
-                await Future.delayed(Duration(seconds: 1));
             }
         }
 
