@@ -235,7 +235,7 @@ class SpatialDb {
           BoundingBox boundingBox = BoundingBox(cell.lon * gridSize, (cell.lon + 1) * gridSize, cell.lat * gridSize, (cell.lat + 1) * gridSize);
           await downloadPointsFromServerWithRetry(boundingBox, poisTable);
           // Add delay to avoid overwhelming the server
-          await Future.delayed(Duration(milliseconds: 1000)); // 1 second delay between cell downloads
+          await Future.delayed(Duration(milliseconds: 300));
         }
         
         downloadedCells.add(boundingBox);

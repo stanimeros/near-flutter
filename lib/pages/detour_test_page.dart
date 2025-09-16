@@ -11,13 +11,11 @@ class DetourTestPage extends StatefulWidget {
 class _DetourTestPageState extends State<DetourTestPage> {
   String _selectedCity = 'ΘΕΣΣΑΛΟΝΙΚΗΣ';
   int _selectedK = 5;
-  int _selectedUser = 0;
   String _selectedCloakingMode = 'baseline_radius';
   bool _isRunning = false;
 
   final List<String> _cities = ['ΘΕΣΣΑΛΟΝΙΚΗΣ', 'ΚΟΜΟΤΗΝΗΣ'];
   final List<int> _kValues = [5, 25, 100];
-  final List<int> _userPoints = [0, 1, 2, 3, 4];
   final Map<String, String> _cloakingModes = {
     'baseline_radius': 'Fixed Radius (500m)',
     'baseline_grid': 'Grid Cell (500m)',
@@ -77,25 +75,6 @@ class _DetourTestPageState extends State<DetourTestPage> {
                 onChanged: (int? newValue) {
                   setState(() {
                     _selectedK = newValue!;
-                  });
-                },
-              ),
-              SizedBox(height: 16),
-              
-              // Main User Selection
-              Text('Main User Point:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-              DropdownButton<int>(
-                value: _selectedUser,
-                isExpanded: true,
-                items: _userPoints.map((int point) {
-                  return DropdownMenuItem<int>(
-                    value: point,
-                    child: Text('Point ${point + 1}'),
-                  );
-                }).toList(),
-                onChanged: (int? newValue) {
-                  setState(() {
-                    _selectedUser = newValue!;
                   });
                 },
               ),
