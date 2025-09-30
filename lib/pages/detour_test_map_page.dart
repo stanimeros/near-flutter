@@ -168,6 +168,7 @@ class _DetourTestMapPageState extends State<DetourTestMapPage> {
       _updateMapMarkers(userPoint);
       
     } catch (e) {
+      debugPrint('Error running test: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error running test: $e')),

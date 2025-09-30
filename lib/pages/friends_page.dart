@@ -11,6 +11,7 @@ import 'package:flutter_near/widgets/custom_loader.dart';
 import 'package:flutter_near/widgets/profile_picture.dart';
 import 'package:flutter_near/pages/friend_page.dart';
 import 'package:flutter_near/widgets/slide_page_route.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 
 class FriendsPage extends StatefulWidget {
@@ -49,14 +50,24 @@ class _FriendsPageState extends State<FriendsPage> {
 
     GeoPoint? pos = await LocationService().getCurrentPosition();
     if (pos != null) {
-      List<Point> points = await SpatialDb().getKNNs(
-        currentUser!.kAnonymity,
+      final nearestPoints = await SpatialDb().getKNNs(
+        1,
         pos.longitude,
         pos.latitude,
         50,
         SpatialDb.pois,
         SpatialDb.cells
       );
+      final distance = Geolocator.distanceBetween(pos.latitude, pos.longitude, nearestPoints.first.lat, nearestPoints.first.lon);
+      List<Point> points = await SpatialDb().getKNNs(
+        currentUser!.kAnonymity,
+        nearestPoints.first.lon,
+        nearestPoints.first.lat,
+        distance,
+        SpatialDb.pois,
+        SpatialDb.cells
+      );
+
       Random random = Random();
       Point randomPoint = points[random.nextInt(points.length)];
       await FirestoreService().setLocation(currentUser!.uid, randomPoint.lon, randomPoint.lat);

@@ -214,6 +214,7 @@ class _DetourTestPageState extends State<DetourTestPage> {
         );
       }
     } catch (e) {
+      debugPrint('Full test failed: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Full test failed: $e')),
