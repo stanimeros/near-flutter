@@ -256,14 +256,20 @@ class DetourRatioTest {
     Future<void> runDetourRatioTest() async {
         debugPrint('Starting detour ratio tests...');
         
-        final kValues = [5, 10, 25, 100];
         final cities = [thessaloniki, komotini];
         final cloakingConfigs = [
             {"mode": "baseline_radius", "radius": 50.0},
             {"mode": "baseline_radius", "radius": 100.0},
+            {"mode": "baseline_radius", "radius": 200.0},
             {"mode": "baseline_grid", "cell_size": 50.0},
             {"mode": "baseline_grid", "cell_size": 100.0},
-            {"mode": "2hp"},
+            {"mode": "baseline_grid", "cell_size": 200.0},
+            {"mode": "2hp", "k": 5},
+            {"mode": "2hp", "k": 10},
+            {"mode": "2hp", "k": 25},
+            {"mode": "2hp", "k": 50},
+            {"mode": "2hp", "k": 100},
+            {"mode": "2hp", "k": 500},
         ];
         final results = <Map<String, dynamic>>[];
 
@@ -277,61 +283,59 @@ class DetourRatioTest {
                 debugPrint('  Point ${i + 1}: (${trace[i]['lat']}, ${trace[i]['lon']})');
             }
             
-            for (final k in kValues) {
-                debugPrint('\nTesting with k=$k');
+            for (final config in cloakingConfigs) {
+                final mode = config['mode'] as String;
+                debugPrint('\nTesting with cloaking method: $mode');
+                if (mode == 'baseline_radius') {
+                    debugPrint('Using radius: ${config['radius']}m');
+                } else if (mode == 'baseline_grid') {
+                    debugPrint('Using cell size: ${config['cell_size']}m');
+                } else if (mode == '2hp') {
+                    debugPrint('Using k: ${config['k']}');
+                }
                 
-                for (final config in cloakingConfigs) {
-                    final mode = config['mode'] as String;
-                    debugPrint('\nTesting with cloaking method: $mode');
-                    if (mode == 'baseline_radius') {
-                        debugPrint('Using radius: ${config['radius']}m');
-                    } else if (mode == 'baseline_grid') {
-                        debugPrint('Using cell size: ${config['cell_size']}m');
-                    }
+                // For each point in the trace
+                for (int traceIdx = 0; traceIdx < trace.length; traceIdx++) {
+                    final tracePoint = trace[traceIdx];
+                    debugPrint('\nTesting trace point ${traceIdx + 1}');
                     
-                    // For each point in the trace
-                    for (int traceIdx = 0; traceIdx < trace.length; traceIdx++) {
-                        final tracePoint = trace[traceIdx];
-                        debugPrint('\nTesting trace point ${traceIdx + 1}');
-                        
-                        // Run 5 times for each point
-                        for (int run = 0; run < 5; run++) {
-                            debugPrint('Run ${run + 1}/5');
-                            try {
-                                // Create a custom test point list with the current trace point as U1
-                                final testPoints = [
-                                    tracePoint,  // U1's position
-                                    ...city['test_points'], // Other points as contacts
-                                ];
+                    // Run 5 times for each point
+                    for (int run = 0; run < 5; run++) {
+                        debugPrint('Run ${run + 1}/5');
+                        try {
+                            // Create a custom test point list with the current trace point as U1
+                            final testPoints = [
+                                tracePoint,  // U1's position
+                                ...city['test_points'], // Other points as contacts
+                            ];
+                            
+                            final result = await runDetourTest(
+                                {...city, 'test_points': testPoints},
+                                config['k'] as int? ?? 5,
+                                0, // Always use index 0 as it's U1's position
+                                mode,
+                                config['radius'] as double? ?? 500.0,
+                                config['cell_size'] as double? ?? 500.0
+                            );
+                            
+                            results.add(result);
+                            
+                            final methodName = result['cloaking_method'];
+                            debugPrint('Cloaking method: $methodName');
+                            debugPrint('Average detour ratio: ${result['avg_detour_ratio'].toStringAsFixed(2)}');
+                            
+                            if (methodName == '2hp') {
+                                final userCandidateCount = result['candidate_spois']?.length ?? 0;
+                                debugPrint('Number of candidate SPOIs for U1: $userCandidateCount');
                                 
-                                final result = await runDetourTest(
-                                    {...city, 'test_points': testPoints},
-                                    k,
-                                    0, // Always use index 0 as it's U1's position
-                                    mode,
-                                    config['radius'] as double? ?? 500.0,
-                                    config['cell_size'] as double? ?? 500.0
-                                );
-                                
-                                results.add(result);
-                                
-                                final methodName = result['cloaking_method'];
-                                debugPrint('Cloaking method: $methodName');
-                                debugPrint('Average detour ratio: ${result['avg_detour_ratio'].toStringAsFixed(2)}');
-                                
-                                if (methodName == '2hp') {
-                                    final userCandidateCount = result['candidate_spois']?.length ?? 0;
-                                    debugPrint('Number of candidate SPOIs for U1: $userCandidateCount');
-                                    
-                                    // Print candidate SPOIs for contacts
-                                    for (final contact in result['contacts']) {
-                                        final contactCandidateCount = contact['candidate_spois']?.length ?? 0;
-                                        debugPrint('Number of candidate SPOIs for ${contact['contact_id']}: $contactCandidateCount');
-                                    }
+                                // Print candidate SPOIs for contacts
+                                for (final contact in result['contacts']) {
+                                    final contactCandidateCount = contact['candidate_spois']?.length ?? 0;
+                                    debugPrint('Number of candidate SPOIs for ${contact['contact_id']}: $contactCandidateCount');
                                 }
-                            } catch (e) {
-                                debugPrint('Error: $e');
                             }
+                        } catch (e) {
+                            debugPrint('Error: $e');
                         }
                     }
                 }
