@@ -42,7 +42,14 @@ class DetourRatioTest {
             // Generate points at different distances and angles around the center (no center point)
             calculateDestinationPoint(centerLat, centerLon, 1000, -60),
             calculateDestinationPoint(centerLat, centerLon, 700, 30),
-            calculateDestinationPoint(centerLat, centerLon, 300, 0),
+            calculateDestinationPoint(centerLat, centerLon, 600, 0),
+            calculateDestinationPoint(centerLat, centerLon, 700, 10),
+            calculateDestinationPoint(centerLat, centerLon, 800, 50),
+            calculateDestinationPoint(centerLat, centerLon, 300, 80),
+            calculateDestinationPoint(centerLat, centerLon, 560, -10),
+            calculateDestinationPoint(centerLat, centerLon, 630, -40),
+            calculateDestinationPoint(centerLat, centerLon, 740, -60),
+            calculateDestinationPoint(centerLat, centerLon, 820, -22),
         ];
     }
 
@@ -50,9 +57,10 @@ class DetourRatioTest {
     static List<Map<String, double>> generateTrace(double centerLat, double centerLon) {
         return [
             {"lat": centerLat, "lon": centerLon},
-            calculateDestinationPoint(centerLat, centerLon, 200, -10),
-            calculateDestinationPoint(centerLat, centerLon, 250, 20),
-            calculateDestinationPoint(centerLat, centerLon, 300, 40),
+            calculateDestinationPoint(centerLat, centerLon, 500, -10),
+            calculateDestinationPoint(centerLat, centerLon, 550, 20),
+            calculateDestinationPoint(centerLat, centerLon, 620, 60),
+            calculateDestinationPoint(centerLat, centerLon, 670, -50),
         ];
     }
 
@@ -261,15 +269,25 @@ class DetourRatioTest {
             {"mode": "baseline_radius", "radius": 50.0},
             {"mode": "baseline_radius", "radius": 100.0},
             {"mode": "baseline_radius", "radius": 200.0},
+            {"mode": "baseline_radius", "radius": 250.0},
+            {"mode": "baseline_radius", "radius": 750.0},
+            {"mode": "baseline_radius", "radius": 1000.0},
             {"mode": "baseline_grid", "cell_size": 50.0},
             {"mode": "baseline_grid", "cell_size": 100.0},
             {"mode": "baseline_grid", "cell_size": 200.0},
+            {"mode": "baseline_grid", "cell_size": 250.0},
+            {"mode": "baseline_grid", "cell_size": 750.0},
+            {"mode": "baseline_grid", "cell_size": 1000.0},
             {"mode": "2hp", "k": 5},
             {"mode": "2hp", "k": 10},
             {"mode": "2hp", "k": 25},
             {"mode": "2hp", "k": 50},
             {"mode": "2hp", "k": 100},
+            {"mode": "2hp", "k": 200},
+            {"mode": "2hp", "k": 250},
             {"mode": "2hp", "k": 500},
+            {"mode": "2hp", "k": 750},
+            {"mode": "2hp", "k": 1000},
         ];
         final results = <Map<String, dynamic>>[];
 
