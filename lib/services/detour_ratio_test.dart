@@ -43,13 +43,6 @@ class DetourRatioTest {
             calculateDestinationPoint(centerLat, centerLon, 1000, -60),
             calculateDestinationPoint(centerLat, centerLon, 700, 30),
             calculateDestinationPoint(centerLat, centerLon, 600, 0),
-            calculateDestinationPoint(centerLat, centerLon, 700, 10),
-            calculateDestinationPoint(centerLat, centerLon, 800, 50),
-            calculateDestinationPoint(centerLat, centerLon, 300, 80),
-            calculateDestinationPoint(centerLat, centerLon, 560, -10),
-            calculateDestinationPoint(centerLat, centerLon, 630, -40),
-            calculateDestinationPoint(centerLat, centerLon, 740, -60),
-            calculateDestinationPoint(centerLat, centerLon, 820, -22),
         ];
     }
 
@@ -70,14 +63,12 @@ class DetourRatioTest {
         "city_id": "2335",
         "center": {"lat": 40.625163649564506, "lon": 22.959696666069682},
         // "center": {"lat": 40.663636138619154, "lon": 22.948311135074803},
-        "test_points": generateTestPoints(40.663636138619154, 22.948311135074803),
     };
 
     static Map<String, dynamic> get komotini => {
         "name": "ΚΟΜΟΤΗΝΗΣ", 
         "city_id": "2595",
         "center": {"lat": 41.11827569692981, "lon": 25.40374006496843},
-        "test_points": generateTestPoints(41.11827569692981, 25.40374006496843),
     };
 
   // Method to open visualization map for a specific test
@@ -270,12 +261,14 @@ class DetourRatioTest {
             {"mode": "baseline_radius", "radius": 100.0},
             {"mode": "baseline_radius", "radius": 200.0},
             {"mode": "baseline_radius", "radius": 250.0},
+            {"mode": "baseline_radius", "radius": 500.0},
             {"mode": "baseline_radius", "radius": 750.0},
             {"mode": "baseline_radius", "radius": 1000.0},
             {"mode": "baseline_grid", "cell_size": 50.0},
             {"mode": "baseline_grid", "cell_size": 100.0},
             {"mode": "baseline_grid", "cell_size": 200.0},
             {"mode": "baseline_grid", "cell_size": 250.0},
+            {"mode": "baseline_grid", "cell_size": 500.0},
             {"mode": "baseline_grid", "cell_size": 750.0},
             {"mode": "baseline_grid", "cell_size": 1000.0},
             {"mode": "2hp", "k": 5},
@@ -293,13 +286,10 @@ class DetourRatioTest {
 
         for (final city in cities) {
             debugPrint('\nTesting city: ${city['name']}');
-            
+
             // Generate a trace for U1 with 3 points
             final trace = generateTrace(city['center']['lat'], city['center']['lon']);
-            debugPrint('\nGenerated trace with ${trace.length} points:');
-            for (int i = 0; i < trace.length; i++) {
-                debugPrint('  Point ${i + 1}: (${trace[i]['lat']}, ${trace[i]['lon']})');
-            }
+            final contactPoints = generateTestPoints(city['center']['lat'], city['center']['lon']);
             
             for (final config in cloakingConfigs) {
                 final mode = config['mode'] as String;
@@ -318,13 +308,14 @@ class DetourRatioTest {
                     debugPrint('\nTesting trace point ${traceIdx + 1}');
                     
                     // Run 5 times for each point
-                    for (int run = 0; run < 5; run++) {
-                        debugPrint('Run ${run + 1}/5');
+                    int runCount = 10;
+                    for (int run = 0; run < runCount; run++) {
+                        debugPrint('Run ${run + 1}/$runCount');
                         try {
                             // Create a custom test point list with the current trace point as U1
                             final testPoints = [
                                 tracePoint,  // U1's position
-                                ...city['test_points'], // Other points as contacts
+                                ...contactPoints, // Other points as contacts
                             ];
                             
                             final result = await runDetourTest(
@@ -375,7 +366,7 @@ class DetourRatioTest {
         final userPoint = city['test_points'][0];
         
         // Create Point object for spatial database
-        final userSpatialPoint = Point(userPoint['lon'], userPoint['lat']);
+        final userTrue = Point(userPoint['lon'], userPoint['lat']);
         
         // Create a single random generator for all SPOIs
         final spoiSeed = DateTime.now().millisecondsSinceEpoch;
@@ -386,8 +377,8 @@ class DetourRatioTest {
 
         // Get cloaked location for user A
         final userCloakedLocation = await getCloakedLocation(
-            userSpatialPoint.lat,
-            userSpatialPoint.lon,
+            userTrue.lat,
+            userTrue.lon,
             cloakingMode,
             k: k,
             radiusMeters: radiusMeters,
@@ -465,10 +456,10 @@ class DetourRatioTest {
         final firstContact = contacts.first;
         final clustersStartTime = DateTime.now();
         final clusters = await SpatialDb().getClustersBetweenTwoPoints(
-            userSPOI,
+            userTrue,
             Point(
-                firstContact['generated_spoi']['lon'],
-                firstContact['generated_spoi']['lat'],
+                firstContact['true_location']['lon'],
+                firstContact['true_location']['lat'],
             ),
         );
         final clustersEndTime = DateTime.now();
