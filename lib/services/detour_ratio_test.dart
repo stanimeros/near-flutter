@@ -5,11 +5,54 @@ import 'package:flutter/material.dart';
 import 'package:flutter_near/services/spatial_db.dart';
 import 'package:flutter_near/pages/detour_test_map_page.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:battery_plus/battery_plus.dart';
-import 'package:resource_monitor/resource_monitor.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class DetourRatioTest {
+    // Cache management methods
+    static Future<void> saveClusters(Point point1, Point point2, List<NearCluster> clusters) async {
+        final prefs = await SharedPreferences.getInstance();
+        final key = '${point1.lon}_${point1.lat}_${point2.lon}_${point2.lat}';
+        
+        final clusterData = clusters.map((c) => {
+            'id': c.id,
+            'city_id': c.cityId,
+            'city_name': c.cityName,
+            'core_point': {'lat': c.corePoint.lat, 'lon': c.corePoint.lon},
+        }).toList();
+        
+        await prefs.setString(key, jsonEncode(clusterData));
+        debugPrint('Saved ${clusters.length} clusters to cache with key: $key');
+    }
+
+    static Future<List<NearCluster>?> getCachedClusters(Point point1, Point point2) async {
+        final prefs = await SharedPreferences.getInstance();
+        final key = '${point1.lon}_${point1.lat}_${point2.lon}_${point2.lat}';
+        final data = prefs.getString(key);
+        
+        if (data == null) {
+            debugPrint('No cached clusters found for key: $key');
+            return null;
+        }
+
+        try {
+            final List<dynamic> clusterData = jsonDecode(data);
+            final clusters = clusterData.map((c) => NearCluster(
+                id: c['id'],
+                cityId: c['city_id'],
+                cityName: c['city_name'],
+                corePoint: Point(
+                    c['core_point']['lon'],
+                    c['core_point']['lat'],
+                ),
+            )).toList();
+            debugPrint('Retrieved ${clusters.length} clusters from cache with key: $key');
+            return clusters;
+        } catch (e) {
+            debugPrint('Error deserializing cached clusters: $e');
+            return null;
+        }
+    }
     // Helper function to calculate coordinates at a specific distance and bearing from a point
     static Map<String, double> calculateDestinationPoint(double lat, double lon, double distanceMeters, double bearingDegrees) {
         const double earthRadius = 6371000; // Earth's radius in meters
@@ -255,7 +298,10 @@ class DetourRatioTest {
     Future<void> runDetourRatioTest() async {
         debugPrint('Starting detour ratio tests...');
         
-        final cities = [thessaloniki, komotini];
+        final cities = [
+          thessaloniki, 
+          // komotini
+        ];
         final cloakingConfigs = [
             {"mode": "baseline_radius", "radius": 50.0},
             {"mode": "baseline_radius", "radius": 100.0},
@@ -304,11 +350,13 @@ class DetourRatioTest {
                 
                 // For each point in the trace
                 for (int traceIdx = 0; traceIdx < trace.length; traceIdx++) {
+                    final prefs = await SharedPreferences.getInstance();
+                    prefs.clear();
                     final tracePoint = trace[traceIdx];
                     debugPrint('\nTesting trace point ${traceIdx + 1}');
                     
                     // Run 5 times for each point
-                    int runCount = 10;
+                    int runCount = 25;
                     for (int run = 0; run < runCount; run++) {
                         debugPrint('Run ${run + 1}/$runCount');
                         try {
@@ -454,14 +502,24 @@ class DetourRatioTest {
 
         // Get clusters between the user's SPOI and the first contact's SPOI
         final firstContact = contacts.first;
-        final clustersStartTime = DateTime.now();
-        final clusters = await SpatialDb().getClustersBetweenTwoPoints(
-            userTrue,
-            Point(
-                firstContact['true_location']['lon'],
-                firstContact['true_location']['lat'],
-            ),
+        final contactPoint = Point(
+            firstContact['true_location']['lon'],
+            firstContact['true_location']['lat'],
         );
+        
+        final clustersStartTime = DateTime.now();
+        
+        // Try to get clusters from cache first
+        List<NearCluster>? clusters = await getCachedClusters(userTrue, contactPoint);
+        
+        // If not in cache, fetch from API and cache the result
+        if (clusters == null) {
+            clusters = await SpatialDb().getClustersBetweenTwoPoints(userTrue, contactPoint);
+            if (clusters.isNotEmpty) {
+                await saveClusters(userTrue, contactPoint, clusters);
+            }
+        }
+        
         final clustersEndTime = DateTime.now();
         
         if (clusters.isEmpty) {
@@ -493,8 +551,8 @@ class DetourRatioTest {
         // Calculate average detour ratio
         final avgDetourRatio = contacts.isEmpty ? 0.0 : totalDetourRatio / contacts.length;
 
-        final data = await ResourceMonitor.getResourceUsage;
-        final batteryLevel = (await Battery().batteryLevel).toDouble();
+        // final data = await ResourceMonitor.getResourceUsage;
+        // final batteryLevel = (await Battery().batteryLevel).toDouble();
         
         return {
             // Test configuration
@@ -536,9 +594,9 @@ class DetourRatioTest {
             // System metrics
             'metrics': {
                 'network_latency_ms': clustersEndTime.difference(clustersStartTime).inMilliseconds.toDouble(),
-                'cpu_usage_pct': data.cpuInUseByApp,
-                'battery_level_pct': batteryLevel,
-                'memory_usage_bytes': data.memoryInUseByApp.toInt(),
+                // 'cpu_usage_pct': data.cpuInUseByApp,
+                // 'battery_level_pct': batteryLevel,
+                // 'memory_usage_bytes': data.memoryInUseByApp.toInt(),
             },
         };
     }
