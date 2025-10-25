@@ -49,8 +49,8 @@ class OrderAccuracyTest {
     
     for (var i = 0; i < numContacts; i++) {
       final angle = random.nextDouble() * 2 * pi;
-      final distance = min(10, random.nextDouble() * radiusMeters);
-      contacts.add(calculateDestinationPoint(centerLat, centerLon, distance.toDouble(), angle * (180 / pi)));
+      final distance = max(10.0, random.nextDouble() * radiusMeters);
+      contacts.add(calculateDestinationPoint(centerLat, centerLon, distance, angle * (180 / pi)));
     }
     
     return contacts;
@@ -87,8 +87,8 @@ class OrderAccuracyTest {
     final radiusValues = [500.0, 3000.0]; // meters
     const numContacts = 3;
     const numRepetitions = 100; // Run full test set for accurate results
-    const locationChangeInterval = Duration(milliseconds: 250);
-    
+    const locationChangeInterval = Duration(milliseconds: 100);
+
     final spatialDb = SpatialDb();
     final center = thessaloniki['center'];
 
