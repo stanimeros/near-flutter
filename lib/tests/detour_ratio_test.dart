@@ -3,7 +3,6 @@ import 'dart:math';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_near/services/spatial_db.dart';
-import 'package:flutter_near/pages/detour_test_map_page.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -114,19 +113,6 @@ class DetourRatioTest {
         "center": {"lat": 41.11827569692981, "lon": 25.40374006496843},
     };
 
-  // Method to open visualization map for a specific test
-  static void openVisualizationMap(BuildContext context, Map<String, dynamic> city, int k) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => DetourTestMapPage(
-          city: city,
-          k: k,
-        ),
-      ),
-    );
-  }
-
   // Method to run a single test with visualization option
   static Future<void> runSingleTestWithVisualization(BuildContext context, Map<String, dynamic> city, int k, [String cloakingMode = "baseline_radius"]) async {
     debugPrint('Running single test: ${city['name']}, k=$k, User at point 1');
@@ -172,13 +158,6 @@ class DetourRatioTest {
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
                   child: Text('Close'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    openVisualizationMap(context, city, k);
-                  },
-                  child: Text('Visualize on Map'),
                 ),
               ],
             );

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_near/services/auth.dart';
-import 'package:flutter_near/pages/detour_test_page.dart';
+import 'package:flutter_near/tests/detour_ratio_test.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 
 class LoginPage extends StatefulWidget {
@@ -83,12 +83,7 @@ class _LoginPageState extends State<LoginPage> {
                 children: [
                   ElevatedButton.icon(
                     onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const DetourTestPage(),
-                        ),
-                      );
+                      DetourRatioTest().runDetourRatioTest();
                     },
                     icon: Icon(Icons.analytics),
                     label: Text('Detour Ratio Test'),
