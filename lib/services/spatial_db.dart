@@ -266,14 +266,16 @@ class SpatialDb {
     return list;
   }
 
-  Future<List<Point>> getKNNs(int k, double lon, double lat, double bufferMeters, TableName poisTable, TableName cellsTable) async {
+  Future<List<Point>> getKNNs(int k, double lon, double lat, double bufferMeters, TableName poisTable, TableName cellsTable, {bool downloadMissingCells = true}) async {
     List<Point> list = [];
 
     while (list.length < k) {
       debugPrint('Creating bbox with side ${bufferMeters*2}m');
       BoundingBox boundingBox = await createBufferBoundingBox(lon, lat, bufferMeters);
 
-      await downloadCellsInArea(boundingBox, poisTable, cellsTable);
+      if (downloadMissingCells) {
+        await downloadCellsInArea(boundingBox, poisTable, cellsTable);
+      }
       List<Point> points = await getPointsInBoundingBox(boundingBox, poisTable);
 
       if (points.length < k) {
@@ -600,6 +602,69 @@ class SpatialDb {
       );
     }
   }   
+
+  // Clear all POIs from the database
+  Future<void> clearPois() async {
+    try {
+      await emptyTable(pois);
+      debugPrint('POIs table cleared successfully');
+    } catch (e) {
+      debugPrint('Error clearing POIs table: $e');
+    }
+  }
+
+  // Load POIs from a file in the assets/points directory
+  Future<void> loadPoisFromFile(String filename) async {
+    try {
+      final assetPath = 'assets/points/$filename';
+      debugPrint('Loading POIs from asset: $assetPath');
+      
+      // Get the asset file as a string stream
+      final ByteData data = await rootBundle.load(assetPath);
+      final String contents = utf8.decode(data.buffer.asUint8List());
+      final Stream<String> lines = Stream.fromIterable(contents.split('\n'));
+
+      int pointsImported = 0;
+      const batchSize = 1000;
+      List<String> currentBatch = [];
+      
+      await for (final line in lines) {
+        if (line.isNotEmpty) {
+          currentBatch.add(line);
+        }
+        
+        // Process batch when it reaches batchSize lines
+        if (currentBatch.length >= batchSize) {
+          final batchPoints = currentBatch.map((line) {
+            final parts = line.split('-');
+            final lon = double.parse(parts[0]);
+            final lat = double.parse(parts[1]);
+            return Point(lon, lat);
+          }).toList();
+          await addPointsToTable(batchPoints, pois);
+          pointsImported += batchPoints.length;
+          currentBatch = []; // Clear the batch
+        }
+      }
+      
+      // Process any remaining lines
+      if (currentBatch.isNotEmpty) {
+        final batchPoints = currentBatch.map((line) {
+          final parts = line.split('-');
+          final lon = double.parse(parts[0]);
+          final lat = double.parse(parts[1]);
+          return Point(lon, lat);
+        }).toList();
+        await addPointsToTable(batchPoints, pois);
+        pointsImported += batchPoints.length;
+      }
+
+      debugPrint('Successfully imported $pointsImported POIs from asset');
+    } catch (e) {
+      debugPrint('Error loading POIs from asset: $e');
+      rethrow;
+    }
+  }
 
   Future<void> importPointsFromAsset(String assetPath, TableName poisTable) async {
     debugPrint('Importing points from $assetPath to ${poisTable.fixedName}');

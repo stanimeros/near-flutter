@@ -61,10 +61,17 @@ class OrderAccuracyTest {
     final kValues = [5, 10, 25, 100, 500];
     final radiusValues = [500.0, 3000.0]; // meters
     const numContacts = 3;
-    const numRepetitions = 100; // Run full test set for accurate results
+    const numRepetitions = 300; // Run full test set for accurate results
     const locationChangeInterval = Duration(milliseconds: 100);
 
     final spatialDb = SpatialDb();
+    
+    // Initialize database and load POIs from 5km.txt
+    await spatialDb.openDbFile(SpatialDb.dbFilename);
+    await spatialDb.createSpatialTable(SpatialDb.pois);
+    await spatialDb.clearPois();
+    await spatialDb.loadPoisFromFile('5km.txt');
+    
     final center = thessaloniki['center'];
 
     // Store results for final summary
@@ -102,7 +109,7 @@ class OrderAccuracyTest {
           );
 
           // Get nearest point and its k neighbors for user (2HP first step)
-          final userNearestPoint = await spatialDb.getKNNs(1, userLocation['lon']!, userLocation['lat']!, 50, SpatialDb.pois, SpatialDb.cells);
+          final userNearestPoint = await spatialDb.getKNNs(1, userLocation['lon']!, userLocation['lat']!, 50, SpatialDb.pois, SpatialDb.cells, downloadMissingCells: false);
           final userDistance = Geolocator.distanceBetween(
             userLocation['lat']!,
             userLocation['lon']!,
@@ -117,7 +124,8 @@ class OrderAccuracyTest {
             userNearestPoint.first.lat,
             userDistance,
             SpatialDb.pois,
-            SpatialDb.cells
+            SpatialDb.cells,
+            downloadMissingCells: false
           );
           
           // Select random point as user's SPOI
@@ -126,7 +134,7 @@ class OrderAccuracyTest {
           // Get SPOIs for contacts using same process
           final contactSPOIs = await Future.wait(
             contactLocations.map((contact) async {
-              final nearestPoint = await spatialDb.getKNNs(1, contact['lon']!, contact['lat']!, 50, SpatialDb.pois, SpatialDb.cells);
+              final nearestPoint = await spatialDb.getKNNs(1, contact['lon']!, contact['lat']!, 50, SpatialDb.pois, SpatialDb.cells, downloadMissingCells: false);
               final distance = Geolocator.distanceBetween(
                 contact['lat']!,
                 contact['lon']!,
@@ -139,7 +147,8 @@ class OrderAccuracyTest {
                 nearestPoint.first.lat,
                 distance,
                 SpatialDb.pois,
-                SpatialDb.cells
+                SpatialDb.cells,
+                downloadMissingCells: false
               );
               return knnPoints[random.nextInt(knnPoints.length)];
             })
