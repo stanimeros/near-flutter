@@ -233,7 +233,7 @@ class SpatialDb {
           debugPrint('Downloading new cell $cellKey: ${cell.lon},${cell.lat}');
           await addCellToTable(cell, cellsTable);
           BoundingBox boundingBox = BoundingBox(cell.lon * gridSize, (cell.lon + 1) * gridSize, cell.lat * gridSize, (cell.lat + 1) * gridSize);
-          await downloadPointsFromServerWithRetry(boundingBox, poisTable);
+          await downloadPointsFromOSM(boundingBox, poisTable);
           // Add delay to avoid overwhelming the server
           await Future.delayed(Duration(milliseconds: 200));
         }
@@ -381,40 +381,67 @@ class SpatialDb {
   }
 
   Future<List<Point>> downloadPointsFromOSM(BoundingBox boundingBox, TableName poisTable) async {
+    const int maxRetries = 10;
+    int retryCount = 0;
     List<Point> downloadedPoints = [];
-    final client = http.Client();
-    final uri = Uri.https('overpass-api.de', '/api/interpreter', {
-      'data': '[out:json];'
-      'node(${boundingBox.minLat.toStringAsFixed(6)},'
-      '${boundingBox.minLon.toStringAsFixed(6)},'
-      '${boundingBox.maxLat.toStringAsFixed(6)},'
-      '${boundingBox.maxLon.toStringAsFixed(6)});'
-      'out;'
-    });
-    debugPrint('Downloading points from OSM: $uri');
-    try {
-      final response = await client.get(uri).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw TimeoutException('Request timed out');
-        },
-      );
-
-      if (response.statusCode == 200) {
-        downloadedPoints = await compute(parsePointsFromJSON, response.body);
-
-        if (downloadedPoints.isNotEmpty) {
-          debugPrint('Adding ${downloadedPoints.length} points to ${poisTable.fixedName}');
-          await addPointsToTable(downloadedPoints, poisTable);
+    
+    while (retryCount < maxRetries) {
+      final client = http.Client();
+      try {
+        final uri = Uri.https('overpass-api.de', '/api/interpreter', {
+          'data': '[out:json];'
+          'node(${boundingBox.minLat.toStringAsFixed(6)},'
+          '${boundingBox.minLon.toStringAsFixed(6)},'
+          '${boundingBox.maxLat.toStringAsFixed(6)},'
+          '${boundingBox.maxLon.toStringAsFixed(6)});'
+          'out;'
+        });
+        
+        if (retryCount > 0) {
+          debugPrint('Retry $retryCount/$maxRetries downloading points from OSM: $uri');
+        } else {
+          debugPrint('Downloading points from OSM: $uri');
         }
-      } else {
-        debugPrint('Failed to download points: ${response.statusCode} - ${response.body}');
+
+        final response = await client.get(uri).timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            throw TimeoutException('Request timed out');
+          },
+        );
+
+        if (response.statusCode == 200) {
+          downloadedPoints = await compute(parsePointsFromJSON, response.body);
+
+          if (downloadedPoints.isNotEmpty) {
+            debugPrint('Adding ${downloadedPoints.length} points to ${poisTable.fixedName}');
+            await addPointsToTable(downloadedPoints, poisTable);
+            return downloadedPoints; // Success - return immediately
+          }
+          // If we get empty points, retry
+          retryCount++;
+          debugPrint('Got empty points, retry $retryCount/$maxRetries');
+        } else {
+          retryCount++;
+          debugPrint('Failed to download points: ${response.statusCode} - ${response.body}');
+          debugPrint('Retry $retryCount/$maxRetries');
+        }
+      } catch (e) {
+        retryCount++;
+        debugPrint('Error downloading points, retry $retryCount/$maxRetries: $e');
+      } finally {
+        client.close(); // Force fresh connection for next request
       }
-    } catch (e) {
-      debugPrint('Error downloading points: $e');
-    } finally {
-      client.close(); // Force fresh connection for next request
+      
+      if (retryCount < maxRetries) {
+        // Exponential backoff: wait longer between each retry
+        final delay = Duration(seconds: pow(2, retryCount).toInt());
+        debugPrint('Waiting ${delay.inSeconds}s before next retry...');
+        await Future.delayed(delay);
+      }
     }
+    
+    debugPrint('Failed to download points after $maxRetries retries');
     return downloadedPoints;
   }
 
@@ -621,12 +648,14 @@ class SpatialDb {
   }
 }
 
-List<Point> parsePointsFromJSON(String jsonString){
+List<Point> parsePointsFromJSON(String jsonString) {
   final document = jsonDecode(jsonString);
-  return document['elements'].map((node) {
-    if (node['type'] == 'node') {
-      return Point(node['lon'] as double, node['lat'] as double);
-    }
-    return null;
-  }).whereType<Map<String, double>>().toList();
+  final elements = document['elements'] as List;
+  return elements
+    .where((node) => node['type'] == 'node')
+    .map((node) => Point(
+      node['lon'] as double,
+      node['lat'] as double
+    ))
+    .toList();
 }

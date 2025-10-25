@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_near/services/auth.dart';
-import 'package:flutter_near/tests/detour_ratio_test.dart';
+import 'package:flutter_near/tests/order_accuracy_test.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 
 class LoginPage extends StatefulWidget {
@@ -83,10 +83,10 @@ class _LoginPageState extends State<LoginPage> {
                 children: [
                   ElevatedButton.icon(
                     onPressed: () {
-                      DetourRatioTest().runDetourRatioTest();
+                      OrderAccuracyTest.runOrderAccuracyTest();
                     },
                     icon: Icon(Icons.analytics),
-                    label: Text('Detour Ratio Test'),
+                    label: Text('Run Test'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
