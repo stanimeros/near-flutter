@@ -86,7 +86,7 @@ class OrderAccuracyTest {
     final kValues = [5, 10, 25, 100, 500];
     final radiusValues = [500.0, 3000.0]; // meters
     const numContacts = 3;
-    const numRepetitions = 5; //will make it later 300
+    const numRepetitions = 100; // Run full test set for accurate results
     const locationChangeInterval = Duration(milliseconds: 300);
     
     final spatialDb = SpatialDb();
@@ -102,7 +102,7 @@ class OrderAccuracyTest {
       debugPrint('\n=== Testing with radius: ${radius}m ===');
       
       for (final k in kValues) {
-        var correctOrderCount = 0;
+        var correctOrderCount = 0.0;
         
         for (var rep = 0; rep < numRepetitions; rep++) {
           if (rep % 50 == 0) {
@@ -126,23 +126,48 @@ class OrderAccuracyTest {
             random
           );
 
-          // Get cloaked locations
-          final userCloaked = await getCloakedLocation(
+          // Get nearest point and its k neighbors for user (2HP first step)
+          final userNearestPoint = await spatialDb.getKNNs(1, userLocation['lon']!, userLocation['lat']!, 50, SpatialDb.pois, SpatialDb.cells);
+          final userDistance = Geolocator.distanceBetween(
             userLocation['lat']!,
             userLocation['lon']!,
-            k,
-            spatialDb,
-            random
+            userNearestPoint.first.lat,
+            userNearestPoint.first.lon
           );
+          
+          // Get k neighbors around nearest point (2HP second step)
+          final userKnnPoints = await spatialDb.getKNNs(
+            k,
+            userNearestPoint.first.lon,
+            userNearestPoint.first.lat,
+            userDistance,
+            SpatialDb.pois,
+            SpatialDb.cells
+          );
+          
+          // Select random point as user's SPOI
+          final userSPOI = userKnnPoints[random.nextInt(userKnnPoints.length)];
 
-          final contactsCloaked = await Future.wait(
-            contactLocations.map((contact) => getCloakedLocation(
-              contact['lat']!,
-              contact['lon']!,
-              k,
-              spatialDb,
-              random
-            ))
+          // Get SPOIs for contacts using same process
+          final contactSPOIs = await Future.wait(
+            contactLocations.map((contact) async {
+              final nearestPoint = await spatialDb.getKNNs(1, contact['lon']!, contact['lat']!, 50, SpatialDb.pois, SpatialDb.cells);
+              final distance = Geolocator.distanceBetween(
+                contact['lat']!,
+                contact['lon']!,
+                nearestPoint.first.lat,
+                nearestPoint.first.lon
+              );
+              final knnPoints = await spatialDb.getKNNs(
+                k,
+                nearestPoint.first.lon,
+                nearestPoint.first.lat,
+                distance,
+                SpatialDb.pois,
+                SpatialDb.cells
+              );
+              return knnPoints[random.nextInt(knnPoints.length)];
+            })
           );
 
           // Calculate true distances and rankings
@@ -158,23 +183,46 @@ class OrderAccuracyTest {
           final trueOrder = List.generate(numContacts, (i) => i)
             ..sort((a, b) => trueDistances[a].compareTo(trueDistances[b]));
 
-          // Calculate cloaked distances and rankings
-          final cloakedDistances = contactsCloaked.map((contact) =>
+          // Calculate SPOI-based distances and rankings
+          final spoiDistances = contactSPOIs.map((spoi) =>
             Geolocator.distanceBetween(
-              userCloaked['lat'],
-              userCloaked['lon'],
-              contact['lat'],
-              contact['lon']
+              userSPOI.lat,
+              userSPOI.lon,
+              spoi.lat,
+              spoi.lon
             )
           ).toList();
 
-          final cloakedOrder = List.generate(numContacts, (i) => i)
-            ..sort((a, b) => cloakedDistances[a].compareTo(cloakedDistances[b]));
+          final spoiOrder = List.generate(numContacts, (i) => i)
+            ..sort((a, b) => spoiDistances[a].compareTo(spoiDistances[b]));
 
-          // Check if orders match
-          if (trueOrder.toString() == cloakedOrder.toString()) {
-            correctOrderCount++;
+          // Count preserved relative positions
+          var preservedPositions = 0;
+          var totalComparisons = 0;
+          
+          // Compare each pair of indices
+          for (var i = 0; i < numContacts - 1; i++) {
+            for (var j = i + 1; j < numContacts; j++) {
+              totalComparisons++;
+              
+              // Get positions in true order
+              final trueIdxI = trueOrder.indexOf(i);
+              final trueIdxJ = trueOrder.indexOf(j);
+              
+              // Get positions in SPOI order
+              final spoiIdxI = spoiOrder.indexOf(i);
+              final spoiIdxJ = spoiOrder.indexOf(j);
+              
+              // Check if relative order is preserved
+              if ((trueIdxI < trueIdxJ && spoiIdxI < spoiIdxJ) ||
+                  (trueIdxI > trueIdxJ && spoiIdxI > spoiIdxJ)) {
+                preservedPositions++;
+              }
+            }
           }
+          
+          // Add the percentage of preserved positions for this iteration
+          correctOrderCount += (preservedPositions / totalComparisons);
 
           // Wait for location change interval
           await Future.delayed(locationChangeInterval);
