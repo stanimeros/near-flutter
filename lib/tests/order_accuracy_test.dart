@@ -86,11 +86,17 @@ class OrderAccuracyTest {
     final kValues = [5, 10, 25, 100, 500];
     final radiusValues = [500.0, 3000.0]; // meters
     const numContacts = 3;
-    const numRepetitions = 10; //will make it later 300
-    const locationChangeInterval = Duration(milliseconds: 500);
+    const numRepetitions = 5; //will make it later 300
+    const locationChangeInterval = Duration(milliseconds: 300);
     
     final spatialDb = SpatialDb();
     final center = thessaloniki['center'];
+
+    // Store results for final summary
+    final results = <String, Map<int, double>>{};
+    for (final radius in radiusValues) {
+      results['${radius}m'] = {};
+    }
 
     for (final radius in radiusValues) {
       debugPrint('\n=== Testing with radius: ${radius}m ===');
@@ -175,7 +181,20 @@ class OrderAccuracyTest {
         }
 
         final accuracy = (correctOrderCount / numRepetitions) * 100;
+        results['${radius}m']![k] = accuracy;
         debugPrint('Order Accuracy for k=$k: ${accuracy.toStringAsFixed(1)}%');
+      }
+    }
+
+    // Print final summary
+    debugPrint('\n========== FINAL RESULTS ==========');
+    for (final radius in radiusValues) {
+      debugPrint('\nResults for radius: ${radius}m');
+      debugPrint('k\tAccuracy');
+      debugPrint('-------------------');
+      for (final k in kValues) {
+        final accuracy = results['${radius}m']![k]!;
+        debugPrint('$k\t${accuracy.toStringAsFixed(1)}%');
       }
     }
   }

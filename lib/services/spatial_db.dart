@@ -412,15 +412,15 @@ class SpatialDb {
 
         if (response.statusCode == 200) {
           downloadedPoints = await compute(parsePointsFromJSON, response.body);
-
+          
+          // Valid response, even if empty - no need to retry
           if (downloadedPoints.isNotEmpty) {
             debugPrint('Adding ${downloadedPoints.length} points to ${poisTable.fixedName}');
             await addPointsToTable(downloadedPoints, poisTable);
-            return downloadedPoints; // Success - return immediately
+          } else {
+            debugPrint('No points found in this area (valid empty response)');
           }
-          // If we get empty points, retry
-          retryCount++;
-          debugPrint('Got empty points, retry $retryCount/$maxRetries');
+          return downloadedPoints; // Return immediately for any 200 response
         } else {
           retryCount++;
           debugPrint('Failed to download points: ${response.statusCode} - ${response.body}');
