@@ -56,31 +56,6 @@ class OrderAccuracyTest {
     return contacts;
   }
 
-  // Get cloaked location using 2HP method
-  static Future<Map<String, dynamic>> getCloakedLocation(
-    double lat,
-    double lon,
-    int k,
-    SpatialDb db,
-    Random random
-  ) async {
-    // Get nearest point and its k neighbors
-    final nearestPoint = await db.getKNNs(1, lon, lat, 50, SpatialDb.pois, SpatialDb.cells);
-    final distance = Geolocator.distanceBetween(lat, lon, nearestPoint.first.lat, nearestPoint.first.lon);
-    final knnPoints = await db.getKNNs(k, nearestPoint.first.lon, nearestPoint.first.lat, distance, SpatialDb.pois, SpatialDb.cells);
-    
-    // Select random point from k neighbors
-    final selectedPoint = knnPoints[random.nextInt(knnPoints.length)];
-    return {
-      "lat": selectedPoint.lat,
-      "lon": selectedPoint.lon,
-      "candidate_spois": knnPoints.map((p) => {
-        "lat": p.lat,
-        "lon": p.lon,
-      }).toList(),
-    };
-  }
-
   // Main test method
   static Future<void> runOrderAccuracyTest() async {
     final kValues = [5, 10, 25, 100, 500];
