@@ -601,16 +601,6 @@ class SpatialDb {
         arguments: arguments
       );
     }
-  }   
-
-  // Clear all POIs from the database
-  Future<void> clearPois() async {
-    try {
-      await emptyTable(pois);
-      debugPrint('POIs table cleared successfully');
-    } catch (e) {
-      debugPrint('Error clearing POIs table: $e');
-    }
   }
 
   // Load POIs from a file in the assets/points directory

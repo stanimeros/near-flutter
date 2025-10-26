@@ -49,7 +49,7 @@ class OrderAccuracyTest {
     
     for (var i = 0; i < numContacts; i++) {
       final angle = random.nextDouble() * 2 * pi;
-      final distance = max(10.0, random.nextDouble() * radiusMeters);
+      final distance = max(1.0, random.nextDouble() * radiusMeters);
       contacts.add(calculateDestinationPoint(centerLat, centerLon, distance, angle * (180 / pi)));
     }
     
@@ -58,18 +58,16 @@ class OrderAccuracyTest {
 
   // Main test method
   static Future<void> runOrderAccuracyTest() async {
-    final kValues = [5, 10, 25, 100, 500];
+    final kValues = [5, 100, 250, 1000, 5000];
     final radiusValues = [500.0, 3000.0]; // meters
     const numContacts = 3;
-    const numRepetitions = 300; // Run full test set for accurate results
-    const locationChangeInterval = Duration(milliseconds: 100);
+    const numRepetitions = 300;
+    const locationChangeInterval = Duration(milliseconds: 50);
 
     final spatialDb = SpatialDb();
     
     // Initialize database and load POIs from 5km.txt
-    await spatialDb.openDbFile(SpatialDb.dbFilename);
-    await spatialDb.createSpatialTable(SpatialDb.pois);
-    await spatialDb.clearPois();
+    await spatialDb.emptyTable(SpatialDb.pois);
     await spatialDb.loadPoisFromFile('5km.txt');
     
     final center = thessaloniki['center'];
