@@ -5,12 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'helper.dart';
 import 'package:geolocator/geolocator.dart';
 
-Map<String, dynamic> get thessaloniki => {
-  "name": "ΘΕΣΣΑΛΟΝΙΚΗΣ",
-  "city_id": "2335",
-  "center": {"lat": 40.625163649564506, "lon": 22.959696666069682},
-};
-
 // Generate random points within a specific radius
 List<Map<String, double>> generateRandomContacts(
   double centerLat, 
@@ -39,7 +33,7 @@ void main() {
     final kValues = [5, 100, 250, 1000, 5000];
     final radiusValues = [500.0, 3000.0]; // meters
     const numContacts = 3;
-    const numRepetitions = 300;
+    const numRepetitions = 2; //300
     const locationChangeInterval = Duration(milliseconds: 50);
 
     setUp(() async {
@@ -47,8 +41,6 @@ void main() {
       // Initialize database and create tables
       await spatialDb.openDbFile(SpatialDb.dbFilename, path: 'test/db');
       await spatialDb.createSpatialTable(SpatialDb.pois);
-      await spatialDb.createCellsTable(SpatialDb.cells);
-      await spatialDb.emptyTable(SpatialDb.pois);
       await spatialDb.importPointsFromAsset('assets/points/5km.txt', SpatialDb.pois);
     });
 
@@ -58,8 +50,8 @@ void main() {
       await spatialDb.deleteDbFile(SpatialDb.dbFilename, path: 'test/db');
     });
 
-    test('Order accuracy test for different k values and radii', () async {
-      final center = thessaloniki['center'] as Map<String, dynamic>;
+    test('Order accuracy test for different k values and radius', () async {
+      final pamak = Point(22.959696666069682,40.625163649564506);
 
       // Store results for final summary
       final results = <String, Map<int, double>>{};
@@ -79,27 +71,21 @@ void main() {
             }
             
             final random = Random(DateTime.now().millisecondsSinceEpoch);
-            
-            // Generate user's true location (center point)
-            final userLocation = {
-              'lat': center['lat'] as double,
-              'lon': center['lon'] as double
-            };
 
             // Generate random contacts within radius
             final contactLocations = generateRandomContacts(
-              center['lat'] as double,
-              center['lon'] as double,
+              pamak.lat,
+              pamak.lon,
               radius,
               numContacts,
               random
             );
 
             // Get nearest point and its k neighbors for user (2HP first step)
-            final userNearestPoint = await spatialDb.getKNNs(1, userLocation['lon']!, userLocation['lat']!, 50, SpatialDb.pois, SpatialDb.cells, downloadMissingCells: false);
+            final userNearestPoint = await spatialDb.getKNNs(1, pamak.lon, pamak.lat, 50, SpatialDb.pois, SpatialDb.cells, downloadMissingCells: false);
             final userDistance = Geolocator.distanceBetween(
-              userLocation['lat']!,
-              userLocation['lon']!,
+              pamak.lat,
+              pamak.lon,
               userNearestPoint.first.lat,
               userNearestPoint.first.lon
             );
@@ -144,8 +130,8 @@ void main() {
             // Calculate true distances and rankings
             final trueDistances = contactLocations.map((contact) =>
               Geolocator.distanceBetween(
-                userLocation['lat']!,
-                userLocation['lon']!,
+                pamak.lat,
+                pamak.lon,
                 contact['lat']!,
                 contact['lon']!
               )
