@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_near/services/auth.dart';
-import 'package:flutter_near/tests/order_accuracy_test.dart';
 import 'package:flutter_near/widgets/custom_loader.dart';
 
 class LoginPage extends StatefulWidget {
@@ -81,18 +80,6 @@ class _LoginPageState extends State<LoginPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      OrderAccuracyTest.runOrderAccuracyTest();
-                    },
-                    icon: Icon(Icons.analytics),
-                    label: Text('Run Test'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    ),
-                  ),
                   TextButton(
                     onPressed: () {
                       setState(() {

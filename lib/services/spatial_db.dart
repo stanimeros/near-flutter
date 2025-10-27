@@ -68,11 +68,10 @@ class SpatialDb {
   static TableName cells = TableName("cells_pois", schemaSupported: false);
   
   // Function to initialize the database
-  Future<void> openDbFile(String dbFilename) async {
+  Future<void> openDbFile(String dbFilename, {String? path}) async {
     try {
       ConnectionsHandler ch = ConnectionsHandler();
-      Directory directory = await getApplicationDocumentsDirectory();
-      String dbPath = '${directory.path}/$dbFilename';
+      String dbPath = path ?? '${await getApplicationDocumentsDirectory()}/$dbFilename';
       db = ch.open(dbPath);
       db.openOrCreate();
       db.forceRasterMobileCompatibility = false;
@@ -82,10 +81,9 @@ class SpatialDb {
     }
   }
 
-  Future<void> deleteDbFile(String dbFilename) async {
+  Future<void> deleteDbFile(String dbFilename, {String? path}) async {
     try{
-      Directory directory = await getApplicationDocumentsDirectory();
-      String dbPath = '${directory.path}/$dbFilename';
+      String dbPath = path ?? '${await getApplicationDocumentsDirectory()}/$dbFilename';
       
       File file = File(dbPath);
       // Check if the file exists
@@ -600,59 +598,6 @@ class SpatialDb {
         "INSERT OR IGNORE INTO ${poisTable.fixedName} (geopoint) VALUES $values",
         arguments: arguments
       );
-    }
-  }
-
-  // Load POIs from a file in the assets/points directory
-  Future<void> loadPoisFromFile(String filename) async {
-    try {
-      final assetPath = 'assets/points/$filename';
-      debugPrint('Loading POIs from asset: $assetPath');
-      
-      // Get the asset file as a string stream
-      final ByteData data = await rootBundle.load(assetPath);
-      final String contents = utf8.decode(data.buffer.asUint8List());
-      final Stream<String> lines = Stream.fromIterable(contents.split('\n'));
-
-      int pointsImported = 0;
-      const batchSize = 1000;
-      List<String> currentBatch = [];
-      
-      await for (final line in lines) {
-        if (line.isNotEmpty) {
-          currentBatch.add(line);
-        }
-        
-        // Process batch when it reaches batchSize lines
-        if (currentBatch.length >= batchSize) {
-          final batchPoints = currentBatch.map((line) {
-            final parts = line.split('-');
-            final lon = double.parse(parts[0]);
-            final lat = double.parse(parts[1]);
-            return Point(lon, lat);
-          }).toList();
-          await addPointsToTable(batchPoints, pois);
-          pointsImported += batchPoints.length;
-          currentBatch = []; // Clear the batch
-        }
-      }
-      
-      // Process any remaining lines
-      if (currentBatch.isNotEmpty) {
-        final batchPoints = currentBatch.map((line) {
-          final parts = line.split('-');
-          final lon = double.parse(parts[0]);
-          final lat = double.parse(parts[1]);
-          return Point(lon, lat);
-        }).toList();
-        await addPointsToTable(batchPoints, pois);
-        pointsImported += batchPoints.length;
-      }
-
-      debugPrint('Successfully imported $pointsImported POIs from asset');
-    } catch (e) {
-      debugPrint('Error loading POIs from asset: $e');
-      rethrow;
     }
   }
 
