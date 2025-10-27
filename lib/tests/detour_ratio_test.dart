@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:math';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_near/services/spatial_db.dart';
+import 'package:flutter_near/tests/helper.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -52,39 +52,13 @@ class DetourRatioTest {
             return null;
         }
     }
-    // Helper function to calculate coordinates at a specific distance and bearing from a point
-    static Map<String, double> calculateDestinationPoint(double lat, double lon, double distanceMeters, double bearingDegrees) {
-        const double earthRadius = 6371000; // Earth's radius in meters
-        
-        final double latRad = lat * (3.14159265359 / 180);
-        final double lonRad = lon * (3.14159265359 / 180);
-        final double bearingRad = bearingDegrees * (3.14159265359 / 180);
-        
-        final double angularDistance = distanceMeters / earthRadius;
-        
-        final double newLatRad = math.asin(
-            math.sin(latRad) * math.cos(angularDistance) +
-            math.cos(latRad) * math.sin(angularDistance) * math.cos(bearingRad)
-        );
-        
-        final double newLonRad = lonRad + math.atan2(
-            math.sin(bearingRad) * math.sin(angularDistance) * math.cos(latRad),
-            math.cos(angularDistance) - math.sin(latRad) * math.sin(newLatRad)
-        );
-        
-        return {
-            'lat': newLatRad * (180 / 3.14159265359),
-            'lon': newLonRad * (180 / 3.14159265359)
-        };
-    }
-
     // Generate test points programmatically for consistent distances
     static List<Map<String, double>> generateTestPoints(double centerLat, double centerLon) {
         return [
             // Generate points at different distances and angles around the center (no center point)
-            calculateDestinationPoint(centerLat, centerLon, 1000, -60),
-            calculateDestinationPoint(centerLat, centerLon, 700, 30),
-            calculateDestinationPoint(centerLat, centerLon, 600, 0),
+            Helper.calculateDestinationPoint(centerLat, centerLon, 1000, -60),
+            Helper.calculateDestinationPoint(centerLat, centerLon, 700, 30),
+            Helper.calculateDestinationPoint(centerLat, centerLon, 600, 0),
         ];
     }
 
@@ -92,10 +66,10 @@ class DetourRatioTest {
     static List<Map<String, double>> generateTrace(double centerLat, double centerLon) {
         return [
             {"lat": centerLat, "lon": centerLon},
-            calculateDestinationPoint(centerLat, centerLon, 500, -10),
-            calculateDestinationPoint(centerLat, centerLon, 550, 20),
-            calculateDestinationPoint(centerLat, centerLon, 620, 60),
-            calculateDestinationPoint(centerLat, centerLon, 670, -50),
+            Helper.calculateDestinationPoint(centerLat, centerLon, 500, -10),
+            Helper.calculateDestinationPoint(centerLat, centerLon, 550, 20),
+            Helper.calculateDestinationPoint(centerLat, centerLon, 620, 60),
+            Helper.calculateDestinationPoint(centerLat, centerLon, 670, -50),
         ];
     }
 
